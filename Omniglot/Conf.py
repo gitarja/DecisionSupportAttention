@@ -1,0 +1,1 @@
+DATASET_PATH = "D:\\usr\\pras\\data\\OmniGlot\\"

@@ -2,31 +2,40 @@ import tensorflow_datasets as tfds
 import tensorflow as tf
 import numpy as np
 import random
+from Omniglot.Conf import DATASET_PATH
+import numpy as np
+import matplotlib.pyplot as plt
+import pickle
+
+
 class Dataset:
 
     def __init__(self, training):
-        split = "train" if training else "test"
-        ds = tfds.load("omniglot", split=split, as_supervised=True, shuffle_files=False)
+
+        if training:
+            with open(DATASET_PATH + "dataTrain.pickle", 'rb') as f:
+                ds = pickle.load(f)
+        else:
+            with open(DATASET_PATH + "dataTest.pickle", 'rb') as f:
+                ds = pickle.load(f)
 
         self.data = {}
 
-        def extraction(image, label):
-            image = tf.image.convert_image_dtype(image, tf.float32)
-            image = tf.image.rgb_to_grayscale(image)
+        def extraction(image):
+            image = tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1)
             image = tf.image.resize(image, [28, 28])
-            return image, label
+            return image
 
-        for image, label in ds.map(extraction):
-            image = image.numpy()
-            label = str(label.numpy())
+        for i in range(ds.shape[0]):
+            for l in range(ds[i].shape[0]):
+                label = str(i)
+                if label not in self.data:
+                    self.data[label] = []
+                self.data[label].append(extraction(ds[i, l, :, :]))
 
-            if label not in self.data:
-                self.data[label] = []
-            self.data[label] = image
-            self.labels = list(self.data.keys())
+        self.labels = list(self.data.keys())
 
-
-    def get_mini_batches(self, batch_size, repetitions, shots, num_classes, split=False):
+    def get_mini_batches(self, n_buffer, batch_size, repetitions, shots, num_classes, split=False, ref_num=1):
 
         temp_labels = np.zeros(shape=(num_classes * shots))
         temp_images = np.zeros(shape=(num_classes * shots, 28, 28, 1))
@@ -34,33 +43,81 @@ class Dataset:
         if split:
             test_labels = np.zeros(shape=(num_classes))
             test_images = np.zeros(shape=(num_classes, 28, 28, 1))
-
+            ref_images = np.zeros(shape=(num_classes * ref_num, 28, 28, 1))
 
         label_subsets = random.choices(self.labels, k=num_classes)
 
         for class_idx, class_obj in enumerate(label_subsets):
 
-            temp_labels[class_idx *  shots: (class_idx+1)*shots] = class_idx
+            temp_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
 
             if split:
                 test_labels[class_idx] = class_idx
-
-                images_to_split = random.choices(self.data[label_subsets[class_idx]], k=shots+1)
+                images_to_split = random.choices(self.data[label_subsets[class_idx]], k=shots + 1 + ref_num)
                 test_images[class_idx] = images_to_split[-1]
-                temp_images[class_idx * shots : (class_idx+1) *  shots] = images_to_split[:-1]
+                ref_images[class_idx * ref_num: (class_idx + 1) * ref_num] = images_to_split[-1 - ref_num:-1]
+                temp_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[:-1 - ref_num]
 
             else:
-                temp_images[class_idx * shots: (class_idx + 1) * shots] = random.choices(self.data[label_subsets[class_idx]], k=shots)
+                # sample images
+                temp_images[class_idx * shots: (class_idx + 1) * shots] = random.choices(
+                    self.data[label_subsets[class_idx]], k=shots)
 
-            dataset = tf.data.Dataset.from_tensor_slices(
-                (temp_images.astype(np.float32), temp_labels.astype(np.int32))
-            )
-            dataset = dataset.shuffle(100).batch(batch_size).repeat(repetitions)
+        dataset = tf.data.Dataset.from_tensor_slices(
+            (temp_images.astype(np.float32), temp_labels.astype(np.int32))
+        )
+        dataset = dataset.shuffle(n_buffer).batch(batch_size).repeat(repetitions)
 
-            if split:
-                return dataset, test_images, test_labels
+        if split:
+            return dataset, test_images, test_labels.astype(np.int32), ref_images.astype(np.float32)
 
-            return dataset
+        return dataset
+
+    def get_batches(self, shots, num_classes):
+
+        temp_labels = np.zeros(shape=(num_classes))
+        temp_images = np.zeros(shape=(num_classes, 28, 28, 1))
+        ref_images = np.zeros(shape=(num_classes * shots, 28, 28, 1))
+
+        labels = self.labels
+        random.shuffle(labels)
+
+        for idx in range(0, len(labels), shots):
+            label_subsets = labels[idx:idx+shots]
+
+            for class_idx, class_obj in enumerate(label_subsets):
+                temp_labels[class_idx] = class_idx
+
+                # sample images
+                images_to_split = random.choices(
+                    self.data[label_subsets[class_idx]], k=shots+1)
+                temp_images[class_idx] = images_to_split[-1]
+                ref_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[:-1]
+
+                yield temp_images.astype(np.float32), temp_labels.astype(np.int32), ref_images.astype(np.float32),
 
 
+if __name__ == '__main__':
 
+    test_dataset = Dataset(training=False)
+    test_data = test_dataset.get_batches(shots=5, num_classes=5)
+
+    for _, data in enumerate(test_data):
+        print(data)
+
+    # _, axarr = plt.subplots(nrows=5, ncols=5, figsize=(20, 20))
+    #
+    # sample_keys = list(test_dataset.data.keys())
+    #
+    # for a in range(5):
+    #     for b in range(5):
+    #         temp_image = test_dataset.data[sample_keys[a]][b]
+    #         temp_image = np.stack((temp_image[:, :, 0],) * 3, axis=2)
+    #         temp_image *= 255
+    #         temp_image = np.clip(temp_image, 0, 255).astype("uint8")
+    #         if b == 2:
+    #             axarr[a, b].set_title("Class : " + sample_keys[a])
+    #         axarr[a, b].imshow(temp_image, cmap="gray")
+    #         axarr[a, b].xaxis.set_visible(False)
+    #         axarr[a, b].yaxis.set_visible(False)
+    # plt.show()
