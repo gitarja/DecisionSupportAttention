@@ -25,13 +25,13 @@ if gpus:
 train_dataset = Dataset(training=True)
 test_dataset = Dataset(training=False)
 
-eval_interval = 100
+eval_interval = 1
 train_shots = 20
 classes = 5
 inner_batch_size = 25
 inner_iters = 4
 n_buffer = 100
-ref_num = 5
+ref_num = 1
 
 #training setting
 epochs = 2000

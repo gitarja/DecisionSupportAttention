@@ -81,8 +81,8 @@ class Dataset:
         labels = self.labels
         random.shuffle(labels)
 
-        for idx in range(0, len(labels), shots):
-            label_subsets = labels[idx:idx+shots]
+        for idx in range(0, len(labels), num_classes):
+            label_subsets = labels[idx:idx+num_classes]
 
             for class_idx, class_obj in enumerate(label_subsets):
                 temp_labels[class_idx] = class_idx
