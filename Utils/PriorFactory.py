@@ -1,7 +1,7 @@
 #refer: https://github.com/hwalsuklee/tensorflow-mnist-AAE/blob/master/prior_factory.py
 import numpy as np
 from math import sin,cos,sqrt
-
+import tensorflow as tf
 
 def Gaussian(batch_size, n_dim, mean=0, var=1, n_labels=10, use_label_info=False):
     if use_label_info:
@@ -35,7 +35,7 @@ def Gaussian(batch_size, n_dim, mean=0, var=1, n_labels=10, use_label_info=False
                     z_id[batch] = a_label
         return z, z_id
     else:
-        z = np.random.normal(mean, var, (batch_size, n_dim)).astype(np.float32)
+        z = tf.cast(tf.random.normal((batch_size, n_dim), mean, var), tf.float32)
         return z
 
 def GaussianMixture(batch_size, n_dim=2, n_labels=10, x_var=0.5, y_var=0.1, label_indices=None):
