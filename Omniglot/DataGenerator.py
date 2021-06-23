@@ -1,4 +1,3 @@
-import tensorflow_datasets as tfds
 import tensorflow as tf
 import numpy as np
 import random
@@ -23,7 +22,7 @@ class Dataset:
 
         def extraction(image):
             image = tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1)
-            image = tf.image.resize(image, [28, 28])
+            image = tf.image.resize(image, [105, 105])
             return image
 
         for i in range(ds.shape[0]):
@@ -38,12 +37,12 @@ class Dataset:
     def get_mini_batches(self, n_buffer, batch_size, repetitions, shots, num_classes, split=False, ref_num=1):
 
         temp_labels = np.zeros(shape=(num_classes * shots))
-        temp_images = np.zeros(shape=(num_classes * shots, 28, 28, 1))
+        temp_images = np.zeros(shape=(num_classes * shots, 105, 105, 1))
 
         if split:
             test_labels = np.zeros(shape=(num_classes))
-            test_images = np.zeros(shape=(num_classes, 28, 28, 1))
-            ref_images = np.zeros(shape=(num_classes * ref_num, 28, 28, 1))
+            test_images = np.zeros(shape=(num_classes, 105, 105, 1))
+            ref_images = np.zeros(shape=(num_classes * ref_num, 105, 105, 1))
 
         label_subsets = random.choices(self.labels, k=num_classes)
 
@@ -76,8 +75,8 @@ class Dataset:
     def get_batches(self, shots, num_classes):
 
         temp_labels = np.zeros(shape=(num_classes))
-        temp_images = np.zeros(shape=(num_classes, 28, 28, 1))
-        ref_images = np.zeros(shape=(num_classes * shots, 28, 28, 1))
+        temp_images = np.zeros(shape=(num_classes, 105, 105, 1))
+        ref_images = np.zeros(shape=(num_classes * shots, 105, 105, 1))
 
         labels = self.labels
         random.shuffle(labels)

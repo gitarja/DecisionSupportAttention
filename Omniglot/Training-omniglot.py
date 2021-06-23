@@ -8,20 +8,33 @@ from Utils.Libs import euclidianMetric, computeACC
 import numpy as np
 
 
+#set up GPUs
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+  try:
+    # Currently, memory growth needs to be the same across GPUs
+    for gpu in gpus:
+      tf.config.experimental.set_memory_growth(gpu, True)
+    logical_gpus = tf.config.experimental.list_logical_devices('GPU')
+    print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+  except RuntimeError as e:
+    # Memory growth must be set before GPUs have been initialized
+    print(e)
+
 train_dataset = Dataset(training=True)
 test_dataset = Dataset(training=False)
 
 eval_interval = 1
 train_shots = 15
-classes = 10
+classes = 20
 inner_batch_size = 25
 inner_iters = 4
 n_buffer = 100
 ref_num = 5
 
 #training setting
-epochs = 100
-lr = 1e-3
+epochs = 50
+lr = 3e-3
 
 #loss
 triplet_loss = tfa.losses.TripletSemiHardLoss()

@@ -30,6 +30,9 @@ class FewShotModel(K.models.Model):
         self.normalize = tf.keras.layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=1))
 
 
+        self.flat = K.layers.Flatten()
+
+
 
 
     def call(self, inputs, training=None, mask=None):
@@ -37,6 +40,6 @@ class FewShotModel(K.models.Model):
         z = self.block_2(z)
         z = self.block_3(z)
         z = self.block_4(z)
-        z = self.dense(z)
-        z = self.normalize(tf.squeeze(z))
+        z = self.dense(self.flat(z))
+        z = self.normalize(z)
         return z
