@@ -92,7 +92,7 @@ class Dataset:
                 temp_images[class_idx] = images_to_split[0]
                 ref_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[1:shots+1]
 
-                yield temp_images.astype(np.float32), temp_labels.astype(np.int32), ref_images.astype(np.float32),
+            yield temp_images.astype(np.float32), temp_labels.astype(np.int32), ref_images.astype(np.float32),
 
 
 if __name__ == '__main__':

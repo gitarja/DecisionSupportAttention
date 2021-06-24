@@ -110,7 +110,7 @@ for epoch in range(epochs):
         val_logits = model(test_images, training=False)
         loss = triplet_loss(test_labels, val_logits)
         with test_summary_writer.as_default():
-            tf.summary.scalar('loss', loss.result(), step=epoch)
+            tf.summary.scalar('loss', loss, step=epoch)
 
 
 
@@ -124,7 +124,7 @@ acc_avg = []
 for _, (query, labels, references) in enumerate(test_data):
     val_logits = model(query, training=False)
     ref_logits = model(references, training=False)
-    dist_metrics = cosineSimilarity(val_logits, ref_logits, ref_num=shots)
+    dist_metrics = euclidianMetric(val_logits, ref_logits, ref_num=shots)
     val_acc = computeACC(dist_metrics, labels)
     acc_avg.append(val_acc)
     # print(val_acc)

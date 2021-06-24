@@ -5,8 +5,8 @@ import math
 def euclidianMetric(query, references, ref_num=1):
     n = query.shape[0]
     q = query# n-class * k-shot
-    r = tf.expand_dims(tf.reshape(references, (n, ref_num, -1)), 1)
-    logits = -tf.reduce_sum(tf.sqrt((q - tf.reduce_mean(r, 1)) ** 2), axis=-1)
+    r = tf.reshape(references, (n, ref_num, -1))
+    logits = -tf.reduce_sum(tf.sqrt((q - r) ** 2), axis=-1)
     return logits
 
 def computeACC(metrics, labels):
