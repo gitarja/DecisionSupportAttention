@@ -27,8 +27,8 @@ train_dataset = Dataset(training=True)
 test_dataset = Dataset(training=False)
 
 eval_interval = 1
-train_shots = 20
-test_shots = 2
+train_shots = 15
+test_shots = 5
 classes = 5
 inner_batch_size = 25
 inner_iters = 4
@@ -37,7 +37,7 @@ ref_num = 5
 
 #training setting
 epochs = 2000
-lr = 3e-3
+lr = 1e-3
 
 #siamese and discriminator hyperparameter values
 z_dim = 64
@@ -55,7 +55,7 @@ binary_loss = tf.losses.BinaryCrossentropy(from_logits=True)
 
 #optimizer
 siamese_optimizer = tf.optimizers.SGD(lr=lr)
-discriminator_optimizer = tf.optimizers.SGD(lr=lr)
+discriminator_optimizer = tf.optimizers.SGD(lr=lr/3)
 generator_optimizer = tf.optimizers.SGD(lr=lr)
 
 model = FewShotModel(filters=64, z_dim=z_dim)
