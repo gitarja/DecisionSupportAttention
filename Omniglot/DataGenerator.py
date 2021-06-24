@@ -34,15 +34,14 @@ class Dataset:
 
         self.labels = list(self.data.keys())
 
-    def get_mini_batches(self, n_buffer, batch_size, repetitions, shots, num_classes, split=False, ref_num=1):
+    def get_mini_batches(self, n_buffer, batch_size, repetitions, shots, num_classes, split=False, test_shots=1):
 
         temp_labels = np.zeros(shape=(num_classes * shots))
         temp_images = np.zeros(shape=(num_classes * shots, 105, 105, 1))
 
         if split:
-            test_labels = np.zeros(shape=(num_classes))
-            test_images = np.zeros(shape=(num_classes, 105, 105, 1))
-            ref_images = np.zeros(shape=(num_classes * ref_num, 105, 105, 1))
+            test_labels = np.zeros(shape=(num_classes * test_shots))
+            test_images = np.zeros(shape=(num_classes * test_shots, 105, 105, 1))
 
         label_subsets = random.choices(self.labels, k=num_classes)
 
@@ -52,10 +51,9 @@ class Dataset:
 
             if split:
                 test_labels[class_idx] = class_idx
-                images_to_split = random.choices(self.data[label_subsets[class_idx]], k=shots + 1 + ref_num)
-                test_images[class_idx] = images_to_split[-1]
-                ref_images[class_idx * ref_num: (class_idx + 1) * ref_num] = images_to_split[-1 - ref_num:-1]
-                temp_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[:-1 - ref_num]
+                images_to_split = random.choices(self.data[label_subsets[class_idx]], k=shots + test_shots)
+                test_images[class_idx * test_shots: (class_idx + 1) * test_shots] = images_to_split[-test_shots]
+                temp_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[:-test_shots]
 
             else:
                 # sample images
@@ -68,7 +66,7 @@ class Dataset:
         dataset = dataset.shuffle(n_buffer).batch(batch_size).repeat(repetitions)
 
         if split:
-            return dataset, test_images, test_labels.astype(np.int32), ref_images.astype(np.float32)
+            return dataset, test_images, test_labels.astype(np.int32)
 
         return dataset
 

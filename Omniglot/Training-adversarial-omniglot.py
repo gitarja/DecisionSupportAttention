@@ -7,7 +7,8 @@ import tensorflow_addons as tfa
 from Utils.PriorFactory import GaussianMixture, Gaussian
 from Utils.Libs import euclidianMetric, computeACC, cosineSimilarity
 import numpy as np
-
+import datetime
+from Omniglot.Conf import TENSOR_BOARD_PATH
 
 #set up GPUs
 gpus = tf.config.list_physical_devices('GPU')
@@ -25,8 +26,9 @@ if gpus:
 train_dataset = Dataset(training=True)
 test_dataset = Dataset(training=False)
 
-eval_interval = 100
+eval_interval = 1
 train_shots = 20
+test_shots = 2
 classes = 5
 inner_batch_size = 25
 inner_iters = 4
@@ -39,6 +41,13 @@ lr = 3e-3
 
 #siamese and discriminator hyperparameter values
 z_dim = 64
+
+#tensor board
+log_dir = TENSOR_BOARD_PATH + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+train_log_dir =  log_dir + "\\train"
+test_log_dir =  log_dir + "\\test"
+train_summary_writer = tf.summary.create_file_writer(train_log_dir)
+test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
 #loss
 triplet_loss = tfa.losses.TripletSemiHardLoss()
@@ -54,11 +63,10 @@ disc_model = DiscriminatorModel(n_hidden=z_dim, n_output=1, dropout_rate=0.5)
 
 for epoch in range(epochs):
     # dataset
-    mini_dataset = train_dataset.get_mini_batches(n_buffer,
-                                                  inner_batch_size, inner_iters, train_shots, classes, split=False, ref_num=ref_num
+    mini_dataset, test_images, test_labels = train_dataset.get_mini_batches(n_buffer,
+                                                  inner_batch_size, inner_iters, train_shots, classes, split=True, test_shots=test_shots
                                                   )
-    loss_avg = []
-    acc_avg = []
+    train_loss = []
     for images, labels in mini_dataset:
         #sample from gaussian mixture
         samples = Gaussian(len(images), z_dim, n_labels=classes)
@@ -66,6 +74,7 @@ for epoch in range(epochs):
         with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
             train_logits = model(images, training=True)
             embd_loss = triplet_loss(labels, train_logits) #triplet loss
+            train_loss.append(embd_loss)
 
             #generative
 
@@ -95,24 +104,14 @@ for epoch in range(epochs):
         discriminator_optimizer.apply_gradients(zip(discriminator_grads, disc_model.trainable_weights))
         generator_optimizer.apply_gradients(zip(generator_grads, disc_model.trainable_weights))
 
-
+    with train_summary_writer.as_default():
+        tf.summary.scalar('loss', tf.reduce_mean(train_loss), step=epoch)
     if (epoch+1) % eval_interval == 0:
-        _, test_images, test_labels, ref_images = train_dataset.get_mini_batches(n_buffer,
-                                                                                            inner_batch_size,
-                                                                                            inner_iters, train_shots,
-                                                                                            classes, split=True,
-                                                                                            ref_num=ref_num
-                                                                                            )
         val_logits = model(test_images, training=False)
-        ref_logits = model(ref_images, training=False)
         loss = triplet_loss(test_labels, val_logits)
-        # cosineSimilarity(val_logits, ref_logits, ref_num=ref_num)
-        dist_metrics = cosineSimilarity(val_logits, ref_logits, ref_num=ref_num)
-        val_acc = computeACC(dist_metrics, test_labels)
-        acc_avg.append(val_acc)
-        loss_avg.append(loss)
+        with test_summary_writer.as_default():
+            tf.summary.scalar('loss', loss.result(), step=epoch)
 
-        print(np.average(acc_avg))
 
 
 
@@ -125,7 +124,7 @@ acc_avg = []
 for _, (query, labels, references) in enumerate(test_data):
     val_logits = model(query, training=False)
     ref_logits = model(references, training=False)
-    dist_metrics = euclidianMetric(val_logits, ref_logits, ref_num=shots)
+    dist_metrics = cosineSimilarity(val_logits, ref_logits, ref_num=shots)
     val_acc = computeACC(dist_metrics, labels)
     acc_avg.append(val_acc)
     # print(val_acc)
