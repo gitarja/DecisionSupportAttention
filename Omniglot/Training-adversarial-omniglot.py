@@ -37,7 +37,7 @@ ref_num = 5
 
 #training setting
 epochs = 2000
-lr = 1e-3
+lr = 3e-3
 
 #siamese and discriminator hyperparameter values
 z_dim = 64
@@ -55,7 +55,7 @@ binary_loss = tf.losses.BinaryCrossentropy(from_logits=True)
 
 #optimizer
 siamese_optimizer = tf.optimizers.SGD(lr=lr)
-discriminator_optimizer = tf.optimizers.SGD(lr=lr/3)
+discriminator_optimizer = tf.optimizers.SGD(lr=lr)
 generator_optimizer = tf.optimizers.SGD(lr=lr)
 
 model = FewShotModel(filters=64, z_dim=z_dim)
