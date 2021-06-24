@@ -14,13 +14,22 @@ class Dataset:
         elif mode == "validation":
             with open(DATASET_PATH + "mini-imagenet-cache-val.pkl", 'rb') as f:
                 ds = pickle.load(f)
+        elif mode == "train_val":
+            with open(DATASET_PATH + "mini-imagenet-cache-train.pkl", 'rb') as f:
+                ds_train = pickle.load(f)
+            with open(DATASET_PATH + "mini-imagenet-cache-val.pkl", 'rb') as f:
+                ds_val = pickle.load(f)
+            ds = ds_train
+            ds.update(ds_val)
         else:
             with open(DATASET_PATH + "mini-imagenet-cache-test.pkl", 'rb') as f:
                 ds = pickle.load(f)
+
         self.data = {}
         def extraction(image):
             image = tf.image.convert_image_dtype(image, tf.float32)
             return image
+
         images = ds["image_data"]
         images = images.reshape([-1, 600, 84, 84, 3])
         labels = list(ds["class_dict"].keys())
@@ -33,14 +42,14 @@ class Dataset:
 
         self.labels = list(self.data.keys())
 
-    def get_mini_batches(self, batch_size, repetitions, shots, num_classes, split=False):
+    def get_mini_batches(self, n_buffer, batch_size, repetitions, shots, num_classes, split=False, test_shots=1):
 
         temp_labels = np.zeros(shape=(num_classes * shots))
         temp_images = np.zeros(shape=(num_classes * shots, 28, 28, 1))
 
         if split:
-            test_labels = np.zeros(shape=(num_classes))
-            test_images = np.zeros(shape=(num_classes, 28, 28, 1))
+            test_labels = np.zeros(shape=(num_classes * test_shots))
+            test_images = np.zeros(shape=(num_classes * test_shots, 28, 28, 1))
 
         label_subsets = random.choices(self.labels, k=num_classes)
 
@@ -49,11 +58,10 @@ class Dataset:
             temp_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
 
             if split:
-                test_labels[class_idx] = class_idx
-
-                images_to_split = random.choices(self.data[label_subsets[class_idx]], k=shots + 1)
-                test_images[class_idx] = images_to_split[-1]
-                temp_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[:-1]
+                test_labels[class_idx * test_shots: (class_idx + 1) * test_shots] = class_idx
+                images_to_split = random.choices(self.data[label_subsets[class_idx]], k=shots + test_shots)
+                test_images[class_idx * test_shots: (class_idx + 1) * test_shots] = images_to_split[-test_shots]
+                temp_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[:-test_shots]
 
             else:
                 temp_images[class_idx * shots: (class_idx + 1) * shots] = random.choices(
@@ -62,16 +70,41 @@ class Dataset:
             dataset = tf.data.Dataset.from_tensor_slices(
                 (temp_images.astype(np.float32), temp_labels.astype(np.int32))
             )
-            dataset = dataset.shuffle(100).batch(batch_size).repeat(repetitions)
+            dataset = dataset.shuffle(n_buffer).batch(batch_size).repeat(repetitions)
 
             if split:
                 return dataset, test_images, test_labels
 
             return dataset
 
+
+    def get_batches(self, shots, num_classes):
+
+        temp_labels = np.zeros(shape=(num_classes))
+        temp_images = np.zeros(shape=(num_classes, 105, 105, 1))
+        ref_images = np.zeros(shape=(num_classes * shots, 105, 105, 1))
+
+        labels = self.labels
+        random.shuffle(labels)
+
+        for idx in range(0, len(labels), num_classes):
+            label_subsets = labels[idx:idx+num_classes]
+
+            for class_idx, class_obj in enumerate(label_subsets):
+                temp_labels[class_idx] = class_idx
+
+                # sample images
+                # images_to_split = random.choices(
+                #     self.data[label_subsets[class_idx]], k=shots+1)
+                images_to_split = self.data[label_subsets[class_idx]]
+                temp_images[class_idx] = images_to_split[0]
+                ref_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[1:shots+1]
+
+            yield temp_images.astype(np.float32), temp_labels.astype(np.int32), ref_images.astype(np.float32)
+
 if __name__ == '__main__':
 
-    test_dataset = Dataset(mode="test")
+    test_dataset = Dataset(mode="train_val")
 
     _, axarr = plt.subplots(nrows=5, ncols=5, figsize=(20, 20))
 
