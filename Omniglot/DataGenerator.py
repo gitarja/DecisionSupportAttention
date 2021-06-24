@@ -88,10 +88,11 @@ class Dataset:
                 temp_labels[class_idx] = class_idx
 
                 # sample images
-                images_to_split = random.choices(
-                    self.data[label_subsets[class_idx]], k=shots+1)
-                temp_images[class_idx] = images_to_split[-1]
-                ref_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[:-1]
+                # images_to_split = random.choices(
+                #     self.data[label_subsets[class_idx]], k=shots+1)
+                images_to_split = self.data[label_subsets[class_idx]]
+                temp_images[class_idx] = images_to_split[0]
+                ref_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[1:shots+1]
 
                 yield temp_images.astype(np.float32), temp_labels.astype(np.int32), ref_images.astype(np.float32),
 

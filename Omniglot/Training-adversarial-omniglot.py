@@ -5,7 +5,7 @@ from NNModels.FewShotModel import FewShotModel
 from NNModels.AdversarialModel import DiscriminatorModel
 import tensorflow_addons as tfa
 from Utils.PriorFactory import GaussianMixture, Gaussian
-from Utils.Libs import euclidianMetric, computeACC
+from Utils.Libs import euclidianMetric, computeACC, cosineSimilarity
 import numpy as np
 
 
@@ -25,7 +25,7 @@ if gpus:
 train_dataset = Dataset(training=True)
 test_dataset = Dataset(training=False)
 
-eval_interval = 10
+eval_interval = 100
 train_shots = 20
 classes = 5
 inner_batch_size = 25
@@ -46,7 +46,7 @@ binary_loss = tf.losses.BinaryCrossentropy(from_logits=True)
 
 #optimizer
 siamese_optimizer = tf.optimizers.SGD(lr=lr)
-discriminator_optimizer = tf.optimizers.SGD(lr=lr/5)
+discriminator_optimizer = tf.optimizers.SGD(lr=lr)
 generator_optimizer = tf.optimizers.SGD(lr=lr)
 
 model = FewShotModel(filters=64, z_dim=z_dim)
@@ -61,7 +61,7 @@ for epoch in range(epochs):
     acc_avg = []
     for images, labels in mini_dataset:
         #sample from gaussian mixture
-        samples = Gaussian(len(images), z_dim, n_labels=classes*4)
+        samples = Gaussian(len(images), z_dim, n_labels=classes)
 
         with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
             train_logits = model(images, training=True)
@@ -106,7 +106,8 @@ for epoch in range(epochs):
         val_logits = model(test_images, training=False)
         ref_logits = model(ref_images, training=False)
         loss = triplet_loss(test_labels, val_logits)
-        dist_metrics = euclidianMetric(val_logits, ref_logits, ref_num=ref_num)
+        # cosineSimilarity(val_logits, ref_logits, ref_num=ref_num)
+        dist_metrics = cosineSimilarity(val_logits, ref_logits, ref_num=ref_num)
         val_acc = computeACC(dist_metrics, test_labels)
         acc_avg.append(val_acc)
         loss_avg.append(loss)

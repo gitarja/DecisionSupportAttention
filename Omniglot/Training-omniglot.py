@@ -24,31 +24,33 @@ if gpus:
 train_dataset = Dataset(training=True)
 test_dataset = Dataset(training=False)
 
-eval_interval = 1
-train_shots = 15
-classes = 20
+eval_interval = 100
+train_shots = 20
+classes = 5
 inner_batch_size = 25
 inner_iters = 4
 n_buffer = 100
 ref_num = 5
 
 #training setting
-epochs = 50
+epochs = 2000
 lr = 3e-3
+
+#siamese and discriminator hyperparameter values
+z_dim = 64
 
 #loss
 triplet_loss = tfa.losses.TripletSemiHardLoss()
 optimizer = tf.optimizers.Adamax(lr=lr)
 
-model = FewShotModel()
+model = FewShotModel(z_dim=z_dim)
 
 for epoch in range(epochs):
     # dataset
-    mini_dataset, test_images, test_labels, ref_images = train_dataset.get_mini_batches(n_buffer,
-                                                  inner_batch_size, inner_iters, train_shots, classes, split=True, ref_num=ref_num
+    mini_dataset = train_dataset.get_mini_batches(n_buffer,
+                                                  inner_batch_size, inner_iters, train_shots, classes, split=False, ref_num=ref_num
                                                   )
-    loss_avg = []
-    acc_avg = []
+
     for images, labels in mini_dataset:
 
 
@@ -65,8 +67,15 @@ for epoch in range(epochs):
         # the value of the variables to minimize the loss.
         optimizer.apply_gradients(zip(grads, model.trainable_weights))
 
-
-    if epoch % eval_interval == 0:
+    loss_avg = []
+    acc_avg = []
+    if (epoch+1) % eval_interval == 0:
+        _, test_images, test_labels, ref_images = train_dataset.get_mini_batches(n_buffer,
+                                                                                            inner_batch_size,
+                                                                                            inner_iters, train_shots,
+                                                                                            classes, split=True,
+                                                                                            ref_num=ref_num
+                                                                                            )
         val_logits = model(test_images, training=False)
         ref_logits = model(ref_images, training=False)
         loss = triplet_loss(test_labels, val_logits)
@@ -75,7 +84,7 @@ for epoch in range(epochs):
         acc_avg.append(val_acc)
         loss_avg.append(loss)
 
-    print(np.average(acc_avg))
+        print(np.average(acc_avg))
 
 
 
