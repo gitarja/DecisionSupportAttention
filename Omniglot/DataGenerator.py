@@ -38,7 +38,7 @@ class Dataset:
             del self.labels[:int(len(self.labels) *val_frac)]
 
 
-    def get_mini_batches(self, n_buffer, batch_size, repetitions, shots, num_classes, validation=False):
+    def get_mini_batches(self, n_buffer, batch_size, shots, num_classes, validation=False):
 
         temp_labels = np.zeros(shape=(num_classes * shots))
         temp_images = np.zeros(shape=(num_classes * shots, 105, 105, 3))
@@ -60,7 +60,7 @@ class Dataset:
         if validation:
             dataset = dataset.batch(batch_size)
         else:
-            dataset = dataset.shuffle(n_buffer).batch(batch_size).repeat(repetitions)
+            dataset = dataset.shuffle(n_buffer).batch(batch_size)
 
         return dataset
 

@@ -41,14 +41,13 @@ if __name__ == '__main__':
     validation_shots = 20
     classes = 5
     inner_batch_size = 25
-    inner_iters = 4
     n_buffer = 100
     ref_num = 5
     val_loss_th = 1e+3
 
     # training setting
-    epochs = 50
-    episodes = 100
+    epochs = 20
+    episodes = 500
     lr = 1e-3
 
     # siamese and discriminator hyperparameter values
@@ -84,7 +83,7 @@ if __name__ == '__main__':
 
     # validation dataset
     val_dataset = train_dataset.get_mini_batches(n_buffer,
-                                                 inner_batch_size, inner_iters,
+                                                 inner_batch_size,
                                                  validation_shots, classes, validation=True,
                                                  )
 
@@ -93,7 +92,7 @@ if __name__ == '__main__':
         train_loss = []
         for ep in range(episodes):
             mini_dataset = train_dataset.get_mini_batches(n_buffer,
-                                                          inner_batch_size, inner_iters,
+                                                          inner_batch_size,
                                                           train_shots, classes, validation=False,
                                                           )
 
