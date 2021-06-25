@@ -22,12 +22,14 @@ class FewShotModel(K.models.Model):
     def __init__(self, filters=64, z_dim=64):
         super(FewShotModel, self).__init__()
 
-        self.base = K.applications.ResNet50(include_top=False)
-
+        self.base = K.applications.ResNet50(weights="imagenet", include_top=False)
+        trainable = False
+        for layer in self.base.layers:
+            if layer.name == "conv5_block1_out":
+                trainable = True
+            layer.trainable = trainable
         self.dense = K.layers.Dense(z_dim, activation=None)
         self.normalize = tf.keras.layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=1))
-
-
         self.flat = K.layers.Flatten()
 
 

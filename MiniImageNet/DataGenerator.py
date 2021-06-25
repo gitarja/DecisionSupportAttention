@@ -6,7 +6,7 @@ import numpy as np
 import random
 class Dataset:
 
-    def __init__(self, mode="training"):
+    def __init__(self, mode="training", val_frac=0.1):
 
         if mode == "training":
             with open(DATASET_PATH + "mini-imagenet-cache-train.pkl", 'rb') as f:
@@ -41,48 +41,43 @@ class Dataset:
                 self.data[label].append(extraction(images[i, l, :, :, :]))
 
         self.labels = list(self.data.keys())
+        if mode == "train_val":
+            random.shuffle(self.labels)
+            self.val_labels = self.labels[:int(len(self.labels) * val_frac)]  # take 20% classes as validation
+            del self.labels[:int(len(self.labels) * val_frac)]
 
-    def get_mini_batches(self, n_buffer, batch_size, repetitions, shots, num_classes, split=False, test_shots=1):
+    def get_mini_batches(self, n_buffer, batch_size, repetitions, shots, num_classes, validation=False):
 
         temp_labels = np.zeros(shape=(num_classes * shots))
-        temp_images = np.zeros(shape=(num_classes * shots, 28, 28, 1))
-
-        if split:
-            test_labels = np.zeros(shape=(num_classes * test_shots))
-            test_images = np.zeros(shape=(num_classes * test_shots, 28, 28, 1))
-
+        temp_images = np.zeros(shape=(num_classes * shots, 84, 84, 3))
         label_subsets = random.choices(self.labels, k=num_classes)
-
+        if validation:
+            label_subsets = self.val_labels
+            temp_labels = np.zeros(shape=(len(label_subsets) * shots))
+            temp_images = np.zeros(shape=(len(label_subsets) * shots, 84, 84, 3))
         for class_idx, class_obj in enumerate(label_subsets):
-
             temp_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
 
-            if split:
-                test_labels[class_idx * test_shots: (class_idx + 1) * test_shots] = class_idx
-                images_to_split = random.choices(self.data[label_subsets[class_idx]], k=shots + test_shots)
-                test_images[class_idx * test_shots: (class_idx + 1) * test_shots] = images_to_split[-test_shots]
-                temp_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[:-test_shots]
+            # sample images
+            temp_images[class_idx * shots: (class_idx + 1) * shots] = random.choices(
+                self.data[label_subsets[class_idx]], k=shots)
 
-            else:
-                temp_images[class_idx * shots: (class_idx + 1) * shots] = random.choices(
-                    self.data[label_subsets[class_idx]], k=shots)
-
-            dataset = tf.data.Dataset.from_tensor_slices(
-                (temp_images.astype(np.float32), temp_labels.astype(np.int32))
-            )
+        dataset = tf.data.Dataset.from_tensor_slices(
+            (temp_images.astype(np.float32), temp_labels.astype(np.int32))
+        )
+        if validation:
+            dataset = dataset.batch(batch_size)
+        else:
             dataset = dataset.shuffle(n_buffer).batch(batch_size).repeat(repetitions)
 
-            if split:
-                return dataset, test_images, test_labels
-
-            return dataset
+        return dataset
 
 
     def get_batches(self, shots, num_classes):
 
         temp_labels = np.zeros(shape=(num_classes))
-        temp_images = np.zeros(shape=(num_classes, 105, 105, 1))
-        ref_images = np.zeros(shape=(num_classes * shots, 105, 105, 1))
+        temp_images = np.zeros(shape=(num_classes, 84, 84, 3))
+        ref_images = np.zeros(shape=(num_classes * shots, 84, 84, 3))
 
         labels = self.labels
         random.shuffle(labels)

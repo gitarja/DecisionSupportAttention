@@ -5,6 +5,7 @@ from Omniglot.Conf import DATASET_PATH
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
+from tensorflow.keras.applications import resnet
 
 
 class Dataset:
@@ -22,6 +23,7 @@ class Dataset:
 
         def extraction(image):
             image = tf.image.grayscale_to_rgb(tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1))
+            image = resnet.preprocess_input(image)
             return image
 
         for i in range(ds.shape[0]):

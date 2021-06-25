@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 tf.keras.backend.set_floatx('float32')
-from Omniglot.DataGenerator import Dataset
+from MiniImageNet.DataGenerator import Dataset
 from NNModels.FewShotModel import FewShotModel
 from NNModels.AdversarialModel import DiscriminatorModel
 import tensorflow_addons as tfa
@@ -9,7 +9,7 @@ from Utils.PriorFactory import GaussianMixture, Gaussian
 from Utils.Libs import euclidianMetric, computeACC, cosineSimilarity
 import numpy as np
 import datetime
-from Omniglot.Conf import TENSOR_BOARD_PATH
+from MiniImageNet.Conf import TENSOR_BOARD_PATH
 import argparse
 
 if __name__ == '__main__':
@@ -33,7 +33,7 @@ if __name__ == '__main__':
             print(e)
 
     train_dataset = Dataset(mode="train_val", val_frac=0.1)
-    test_dataset = Dataset(mode="test", val_frac=0.1)
+    test_dataset = Dataset(mode="test")
 
     # training setting
     eval_interval = 1
@@ -41,15 +41,15 @@ if __name__ == '__main__':
     validation_shots = 20
     classes = 5
     inner_batch_size = 25
+    inner_iters = 4
     n_buffer = 100
     ref_num = 5
     val_loss_th = 1e+3
 
     # training setting
-    epochs = 20
-    episodes = 500
+    epochs = 50
+    episodes = 100
     lr = 1e-3
-    lr_siamese = 1e-4
 
     # siamese and discriminator hyperparameter values
     z_dim = 64
@@ -70,7 +70,7 @@ if __name__ == '__main__':
     binary_loss = tf.losses.BinaryCrossentropy(from_logits=True)
 
     # optimizer
-    siamese_optimizer = tf.optimizers.SGD(lr=lr_siamese)
+    siamese_optimizer = tf.optimizers.SGD(lr=lr)
     if args.adversarial == True:  # using adversarial as well
         discriminator_optimizer = tf.optimizers.SGD(lr=lr / 3)
         generator_optimizer = tf.optimizers.SGD(lr=lr)
@@ -84,7 +84,7 @@ if __name__ == '__main__':
 
     # validation dataset
     val_dataset = train_dataset.get_mini_batches(n_buffer,
-                                                 inner_batch_size,
+                                                 inner_batch_size, inner_iters,
                                                  validation_shots, classes, validation=True,
                                                  )
 
@@ -93,13 +93,14 @@ if __name__ == '__main__':
         train_loss = []
         for ep in range(episodes):
             mini_dataset = train_dataset.get_mini_batches(n_buffer,
-                                                          inner_batch_size,
+                                                          inner_batch_size, inner_iters,
                                                           train_shots, classes, validation=False,
                                                           )
 
             for images, labels in mini_dataset:
                 # sample from gaussian mixture
-                samples = Gaussian(len(images), z_dim, n_labels=classes*4)
+                if args.adversarial == True:  # using adversarial as well
+                    samples = Gaussian(len(images), z_dim, n_labels=classes)
 
                 with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
                     train_logits = model(images, training=True)
