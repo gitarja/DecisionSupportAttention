@@ -51,6 +51,10 @@ if __name__ == '__main__':
     lr = 1e-3
     lr_siamese = 1e-4
 
+    # early stopping
+    early_th = 3
+    early_idx = 0
+
     # siamese and discriminator hyperparameter values
     z_dim = 64
 
@@ -141,6 +145,11 @@ if __name__ == '__main__':
             if (val_loss_th > val_loss):
                 val_loss_th = val_loss
                 manager.save()
+                early_idx = 0
+            else:
+                early_idx+=1
+            if early_idx == early_th:
+                break
 
             with train_summary_writer.as_default():
                 tf.summary.scalar('loss', tf.reduce_mean(train_loss), step=epoch)
@@ -149,15 +158,4 @@ if __name__ == '__main__':
             print("Training loss=%f, validation loss=%f" % (
             tf.reduce_mean(train_loss), val_loss))  # print train and val losses
 
-    # dataset
-    shots = 5
-    test_data = test_dataset.get_batches(shots=shots, num_classes=5)
-    acc_avg = []
-    for _, (query, labels, references) in enumerate(test_data):
-        val_logits = model(query, training=False)
-        ref_logits = model(references, training=False)
-        dist_metrics = euclidianMetric(val_logits, ref_logits, ref_num=shots)
-        val_acc = computeACC(dist_metrics, labels)
-        acc_avg.append(val_acc)
 
-    print(np.average(acc_avg))

@@ -1,6 +1,6 @@
 import tensorflow as tf
 import math
-
+from sklearn.neighbors import KNeighborsClassifier
 
 def euclidianMetric(query, references, ref_num=1):
     n = query.shape[0]
@@ -22,3 +22,18 @@ def cosineSimilarity(query, references, ref_num=1):
     logits = -metrics(q, r)
 
     return logits
+
+
+def kNN(query, q_labels, references, ref_labels, ref_num=1):
+    X = references.numpy()
+    y = ref_labels
+    classifier = KNeighborsClassifier(n_neighbors=ref_num)
+    classifier.fit(X, y)
+
+    q = query.numpy()
+    q_y = q_labels
+
+    return classifier.score(q, q_y)
+
+
+

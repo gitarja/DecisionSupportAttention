@@ -70,6 +70,7 @@ class Dataset:
 
         temp_labels = np.zeros(shape=(num_classes))
         temp_images = np.zeros(shape=(num_classes, 105, 105, 3))
+        ref_labels = np.zeros(shape=(num_classes * shots))
         ref_images = np.zeros(shape=(num_classes * shots, 105, 105, 3))
 
         labels = self.labels
@@ -80,6 +81,7 @@ class Dataset:
 
             for class_idx, class_obj in enumerate(label_subsets):
                 temp_labels[class_idx] = class_idx
+                ref_labels[class_idx*shots : (class_idx+1) * shots] = class_idx
 
                 # sample images
                 # images_to_split = random.choices(
@@ -88,7 +90,7 @@ class Dataset:
                 temp_images[class_idx] = images_to_split[0]
                 ref_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[1:shots+1]
 
-            yield temp_images.astype(np.float32), temp_labels.astype(np.int32), ref_images.astype(np.float32)
+            yield temp_images.astype(np.float32), temp_labels.astype(np.int32), ref_images.astype(np.float32), ref_labels.astype(np.float32)
 
 
 if __name__ == '__main__':
