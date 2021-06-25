@@ -44,7 +44,7 @@ if __name__ == '__main__':
     ref_num = 5
 
     #training setting
-    epochs = 2000
+    epochs = 4000
     lr = 3e-3
 
     #siamese and discriminator hyperparameter values
