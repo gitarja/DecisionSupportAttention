@@ -42,6 +42,7 @@ class SiameseModel(K.models.Model):
 
         self.dense1 = K.layers.Dense(units=128, activation="elu")
         self.dense2 = K.layers.Dense(units=128, activation="elu")
+
         self.dense3 = K.layers.Dense(units=64, activation=None)
         self.normalize = K.layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=1))
 

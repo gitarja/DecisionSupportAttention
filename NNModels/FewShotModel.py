@@ -22,10 +22,8 @@ class FewShotModel(K.models.Model):
     def __init__(self, filters=64, z_dim=64):
         super(FewShotModel, self).__init__()
 
-        self.block_1 = ConvBlock(filters)
-        self.block_2 = ConvBlock(filters)
-        self.block_3 = ConvBlock(filters)
-        self.block_4 = ConvBlock(z_dim)
+        self.base = K.applications.ResNet50(include_top=False)
+
         self.dense = K.layers.Dense(z_dim, activation=None)
         self.normalize = tf.keras.layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=1))
 
@@ -36,10 +34,7 @@ class FewShotModel(K.models.Model):
 
 
     def call(self, inputs, training=None, mask=None):
-        z = self.block_1(inputs)
-        z = self.block_2(z)
-        z = self.block_3(z)
-        z = self.block_4(z)
+        z = self.base(inputs)
         z = self.dense(self.flat(z))
         z = self.normalize(z)
         return z

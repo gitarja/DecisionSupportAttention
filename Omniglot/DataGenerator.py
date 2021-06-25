@@ -9,20 +9,19 @@ import pickle
 
 class Dataset:
 
-    def __init__(self, training):
+    def __init__(self, mode="training", val_frac=0.1):
 
-        if training:
+        if mode=="training" or mode=="train_val":
             with open(DATASET_PATH + "dataTrain.pickle", 'rb') as f:
                 ds = pickle.load(f)
-        else:
+        elif mode=="test":
             with open(DATASET_PATH + "dataTest.pickle", 'rb') as f:
                 ds = pickle.load(f)
 
         self.data = {}
 
         def extraction(image):
-            image = tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1)
-            image = tf.image.resize(image, [105, 105])
+            image = tf.image.grayscale_to_rgb(tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1))
             return image
 
         for i in range(ds.shape[0]):
@@ -33,48 +32,43 @@ class Dataset:
                 self.data[label].append(extraction(ds[i, l, :, :]))
 
         self.labels = list(self.data.keys())
+        if mode == "train_val":
+            random.shuffle(self.labels)
+            self.val_labels = self.labels[:int(len(self.labels) *val_frac)] #take 20% classes as validation
+            del self.labels[:int(len(self.labels) *val_frac)]
 
-    def get_mini_batches(self, n_buffer, batch_size, repetitions, shots, num_classes, split=False, test_shots=1):
+
+    def get_mini_batches(self, n_buffer, batch_size, repetitions, shots, num_classes, validation=False):
 
         temp_labels = np.zeros(shape=(num_classes * shots))
-        temp_images = np.zeros(shape=(num_classes * shots, 105, 105, 1))
-
-        if split:
-            test_labels = np.zeros(shape=(num_classes * test_shots))
-            test_images = np.zeros(shape=(num_classes * test_shots, 105, 105, 1))
-
+        temp_images = np.zeros(shape=(num_classes * shots, 105, 105, 3))
         label_subsets = random.choices(self.labels, k=num_classes)
-
+        if validation:
+            label_subsets = self.val_labels
+            temp_labels = np.zeros(shape=(len(label_subsets) * shots))
+            temp_images = np.zeros(shape=(len(label_subsets) * shots, 105, 105, 3))
         for class_idx, class_obj in enumerate(label_subsets):
-
             temp_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
 
-            if split:
-                test_labels[class_idx * test_shots: (class_idx + 1) * test_shots] = class_idx
-                images_to_split = random.choices(self.data[label_subsets[class_idx]], k=shots + test_shots)
-                test_images[class_idx * test_shots: (class_idx + 1) * test_shots] = images_to_split[-test_shots]
-                temp_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[:-test_shots]
-
-            else:
-                # sample images
-                temp_images[class_idx * shots: (class_idx + 1) * shots] = random.choices(
+            # sample images
+            temp_images[class_idx * shots: (class_idx + 1) * shots] = random.choices(
                     self.data[label_subsets[class_idx]], k=shots)
 
         dataset = tf.data.Dataset.from_tensor_slices(
             (temp_images.astype(np.float32), temp_labels.astype(np.int32))
         )
-        dataset = dataset.shuffle(n_buffer).batch(batch_size).repeat(repetitions)
-
-        if split:
-            return dataset, test_images, test_labels.astype(np.int32)
+        if validation:
+            dataset = dataset.batch(batch_size)
+        else:
+            dataset = dataset.shuffle(n_buffer).batch(batch_size).repeat(repetitions)
 
         return dataset
 
     def get_batches(self, shots, num_classes):
 
         temp_labels = np.zeros(shape=(num_classes))
-        temp_images = np.zeros(shape=(num_classes, 105, 105, 1))
-        ref_images = np.zeros(shape=(num_classes * shots, 105, 105, 1))
+        temp_images = np.zeros(shape=(num_classes, 105, 105, 3))
+        ref_images = np.zeros(shape=(num_classes * shots, 105, 105, 3))
 
         labels = self.labels
         random.shuffle(labels)
@@ -97,7 +91,7 @@ class Dataset:
 
 if __name__ == '__main__':
 
-    test_dataset = Dataset(training=False)
+    test_dataset = Dataset(mode="test")
     test_data = test_dataset.get_batches(shots=5, num_classes=5)
 
     for _, data in enumerate(test_data):
