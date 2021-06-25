@@ -1,5 +1,6 @@
 import tensorflow as tf
 import math
+import numpy as np
 from sklearn.neighbors import KNeighborsClassifier
 
 def euclidianMetric(query, references, ref_num=1):
@@ -23,17 +24,26 @@ def cosineSimilarity(query, references, ref_num=1):
 
     return logits
 
-
-def kNN(query, q_labels, references, ref_labels, ref_num=1):
+def predict_class(x):
+    idx, c = np.unique(x, return_counts=True)
+    c_max = np.argmax(c)
+    return idx[c_max]
+def kNN(query, q_labels, references, ref_labels, ref_num=1, th=0.5):
     X = references.numpy()
-    y = ref_labels
+    y = ref_labels + 1
     classifier = KNeighborsClassifier(n_neighbors=ref_num)
     classifier.fit(X, y)
 
     q = query.numpy()
-    q_y = q_labels
+    q_y = q_labels + 1
 
-    return classifier.score(q, q_y)
+    #identify outliers or novel class
+    dist, index = classifier.kneighbors(q, ref_num, True)
+    masked_pred = y[index] * (dist <= th)
+    predictions = []
+    for i in range(len(masked_pred)):
+        predictions.append(predict_class(masked_pred[i,:]))
+    return np.average(predictions==q_y)
 
 
 

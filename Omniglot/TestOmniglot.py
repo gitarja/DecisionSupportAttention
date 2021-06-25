@@ -28,6 +28,6 @@ for _, (query, labels, references, ref_labels) in enumerate(test_data):
     val_logits = model(query, training=False)
     ref_logits = model(references, training=False)
 
-    acc = kNN(val_logits, labels, ref_logits, ref_labels)
+    acc = kNN(val_logits, labels, ref_logits, ref_labels, ref_num=5)
     print(acc)
 
