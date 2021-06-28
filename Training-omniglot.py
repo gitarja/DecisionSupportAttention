@@ -83,7 +83,7 @@ if __name__ == '__main__':
         generator_optimizer = tf.optimizers.Adam(lr=lr)
 
     model = FewShotModel(filters=64, z_dim=z_dim)
-    disc_model = DiscriminatorModel(n_hidden=z_dim, n_output=1, dropout_rate=0.3)
+    disc_model = DiscriminatorModel(n_hidden=z_dim, n_output=1, dropout_rate=0.1)
 
     # check point
     checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
@@ -106,7 +106,7 @@ if __name__ == '__main__':
 
             for images, labels in mini_dataset:
                 # sample from gaussian mixture
-                samples = Gaussian(len(images), z_dim, mean=1, var=1)
+                samples = Gaussian(len(images), z_dim, mean=0, var=1)
 
                 with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
                     train_logits = model(images, training=True)

@@ -4,6 +4,7 @@ from math import sin,cos,sqrt
 import tensorflow as tf
 
 def Gaussian(batch_size, n_dim, mean=0, var=1, n_labels=10, use_label_info=False):
+    tf.random.set_seed(0)
     if use_label_info:
         # if n_dim != 2 or n_labels != 10:
         #     raise Exception("n_dim must be 2 and n_labels must be 10.")
