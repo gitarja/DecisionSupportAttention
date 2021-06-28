@@ -9,7 +9,7 @@ from Utils.Libs import kNN, euclidianMetric, computeACC, cosineSimilarity
 import numpy as np
 
 #checkpoint
-checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\adv\\20210628-120737\\model\\"
+checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\adv\\20210628-183701\\model\\"
 
 #model
 model = FewShotModel(filters=64, z_dim=64)

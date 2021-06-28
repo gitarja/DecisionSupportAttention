@@ -5,7 +5,7 @@ from Omniglot.DataGenerator import Dataset
 from NNModels.FewShotModel import FewShotModel
 from NNModels.AdversarialModel import DiscriminatorModel
 import tensorflow_addons as tfa
-from Utils.PriorFactory import GaussianMixture, Gaussian
+from Utils.PriorFactory import GaussianMixture, Gaussian, GaussianMultivariate
 from Utils.Libs import euclidianMetric, computeACC, cosineSimilarity
 import numpy as np
 import datetime
@@ -70,7 +70,7 @@ if __name__ == '__main__':
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    triplet_loss = tfa.losses.TripletSemiHardLoss()
+    triplet_loss = tfa.losses.TripletHardLoss(soft=True)
     binary_loss = tf.losses.BinaryCrossentropy(from_logits=True)
 
     # optimizer
@@ -79,11 +79,11 @@ if __name__ == '__main__':
     siamese_optimizer = tf.optimizers.Adam(learning_rate=lr)
 
     if args.adversarial == True:  # using adversarial as well
-        discriminator_optimizer = tf.optimizers.Adam(lr=lr/3)
+        discriminator_optimizer = tf.optimizers.Adam(lr=lr/5)
         generator_optimizer = tf.optimizers.Adam(lr=lr)
 
     model = FewShotModel(filters=64, z_dim=z_dim)
-    disc_model = DiscriminatorModel(n_hidden=z_dim, n_output=1, dropout_rate=0.1)
+    disc_model = DiscriminatorModel(n_hidden=z_dim, n_output=1, dropout_rate=0.3)
 
     # check point
     checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
@@ -106,7 +106,7 @@ if __name__ == '__main__':
 
             for images, labels in mini_dataset:
                 # sample from gaussian mixture
-                samples = Gaussian(len(images), z_dim, mean=0, var=1)
+                samples = tf.math.l2_normalize(Gaussian(len(images), z_dim, mean=0, var=1.), -1)
 
                 with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
                     train_logits = model(images, training=True)

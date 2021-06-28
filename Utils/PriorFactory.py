@@ -39,7 +39,7 @@ def Gaussian(batch_size, n_dim, mean=0, var=1, n_labels=10, use_label_info=False
         z = tf.cast(tf.random.normal((batch_size, n_dim), mean, var), tf.float32)
         return z
 
-def GaussianMultivariate(batch_size, n_dim, mean=0, var=1):
+def GaussianMultivariate(batch_size, n_dim, mean=0., var=1.):
     cov_mat = np.diag([var for i in range(n_dim)])
     mean_vec = [mean for i in range(n_dim)]
 
