@@ -98,25 +98,25 @@ class Dataset:
 
 if __name__ == '__main__':
 
-    test_dataset = Dataset(mode="test")
+    test_dataset = Dataset(mode="training")
     test_data = test_dataset.get_batches(shots=5, num_classes=5)
 
-    for _, data in enumerate(test_data):
-        print(data)
+    # for _, data in enumerate(test_data):
+    #     print(data)
 
-    # _, axarr = plt.subplots(nrows=5, ncols=5, figsize=(20, 20))
-    #
-    # sample_keys = list(test_dataset.data.keys())
-    #
-    # for a in range(5):
-    #     for b in range(5):
-    #         temp_image = test_dataset.data[sample_keys[a]][b]
-    #         temp_image = np.stack((temp_image[:, :, 0],) * 3, axis=2)
-    #         temp_image *= 255
-    #         temp_image = np.clip(temp_image, 0, 255).astype("uint8")
-    #         if b == 2:
-    #             axarr[a, b].set_title("Class : " + sample_keys[a])
-    #         axarr[a, b].imshow(temp_image, cmap="gray")
-    #         axarr[a, b].xaxis.set_visible(False)
-    #         axarr[a, b].yaxis.set_visible(False)
-    # plt.show()
+    _, axarr = plt.subplots(nrows=5, ncols=5, figsize=(20, 20))
+
+    sample_keys = list(test_dataset.data.keys())
+
+    for a in range(5):
+        for b in range(5):
+            temp_image = test_dataset.data[sample_keys[a]][b]
+            temp_image = np.stack((temp_image[:, :, 0],) * 3, axis=2)
+            temp_image *= 255
+            temp_image = np.clip(temp_image, 0, 255).astype("uint8")
+            if b == 2:
+                axarr[a, b].set_title("Class : " + sample_keys[a])
+            axarr[a, b].imshow(temp_image, cmap="gray")
+            axarr[a, b].xaxis.set_visible(False)
+            axarr[a, b].yaxis.set_visible(False)
+    plt.show()

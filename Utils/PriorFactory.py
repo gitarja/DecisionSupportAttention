@@ -39,6 +39,13 @@ def Gaussian(batch_size, n_dim, mean=0, var=1, n_labels=10, use_label_info=False
         z = tf.cast(tf.random.normal((batch_size, n_dim), mean, var), tf.float32)
         return z
 
+def GaussianMultivariate(batch_size, n_dim, mean=0, var=1):
+    cov_mat = np.diag([var for i in range(n_dim)])
+    mean_vec = [mean for i in range(n_dim)]
+
+    z = np.random.multivariate_normal(mean_vec, cov_mat, (batch_size, ))
+    return tf.cast(z, tf.float32)
+
 def GaussianMixture(batch_size, n_dim=2, n_labels=10, x_var=0.5, y_var=0.1, label_indices=None):
     # if n_dim != 2:
     #     raise Exception("n_dim must be 2.")
