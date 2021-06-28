@@ -22,8 +22,7 @@ class Dataset:
         self.data = {}
 
         def extraction(image):
-            image = tf.image.grayscale_to_rgb(tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1))
-            image = resnet.preprocess_input(image)
+            image = tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1)
             return image
 
         for i in range(ds.shape[0]):
@@ -35,6 +34,7 @@ class Dataset:
 
         self.labels = list(self.data.keys())
         if mode == "train_val":
+            random.seed(1)
             random.shuffle(self.labels)
             self.val_labels = self.labels[:int(len(self.labels) *val_frac)] #take 20% classes as validation
             del self.labels[:int(len(self.labels) *val_frac)]
@@ -43,12 +43,12 @@ class Dataset:
     def get_mini_batches(self, n_buffer, batch_size, shots, num_classes, validation=False):
 
         temp_labels = np.zeros(shape=(num_classes * shots))
-        temp_images = np.zeros(shape=(num_classes * shots, 105, 105, 3))
+        temp_images = np.zeros(shape=(num_classes * shots, 105, 105, 1))
         label_subsets = random.choices(self.labels, k=num_classes)
         if validation:
             label_subsets = self.val_labels
             temp_labels = np.zeros(shape=(len(label_subsets) * shots))
-            temp_images = np.zeros(shape=(len(label_subsets) * shots, 105, 105, 3))
+            temp_images = np.zeros(shape=(len(label_subsets) * shots, 105, 105, 1))
         for class_idx, class_obj in enumerate(label_subsets):
             temp_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
 
@@ -66,12 +66,14 @@ class Dataset:
 
         return dataset
 
-    def get_batches(self, shots, num_classes):
+    # def get_train_batches(self):
 
+    def get_batches(self, shots, num_classes):
+        random.seed(0)
         temp_labels = np.zeros(shape=(num_classes))
-        temp_images = np.zeros(shape=(num_classes, 105, 105, 3))
+        temp_images = np.zeros(shape=(num_classes, 105, 105, 1))
         ref_labels = np.zeros(shape=(num_classes * shots))
-        ref_images = np.zeros(shape=(num_classes * shots, 105, 105, 3))
+        ref_images = np.zeros(shape=(num_classes * shots, 105, 105, 1))
 
         labels = self.labels
         random.shuffle(labels)
@@ -86,7 +88,8 @@ class Dataset:
                 # sample images
                 # images_to_split = random.choices(
                 #     self.data[label_subsets[class_idx]], k=shots+1)
-                images_to_split = self.data[label_subsets[class_idx]]
+                images_to_split = random.choices(
+                    self.data[label_subsets[class_idx]], k=shots+1)
                 temp_images[class_idx] = images_to_split[0]
                 ref_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[1:shots+1]
 

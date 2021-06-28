@@ -5,8 +5,8 @@ import tensorflow as tf
 
 def Gaussian(batch_size, n_dim, mean=0, var=1, n_labels=10, use_label_info=False):
     if use_label_info:
-        if n_dim != 2 or n_labels != 10:
-            raise Exception("n_dim must be 2 and n_labels must be 10.")
+        # if n_dim != 2 or n_labels != 10:
+        #     raise Exception("n_dim must be 2 and n_labels must be 10.")
 
         def sample(n_labels):
             x, y = np.random.normal(mean, var, (2,))
@@ -33,7 +33,7 @@ def Gaussian(batch_size, n_dim, mean=0, var=1, n_labels=10, use_label_info=False
                     a_sample, a_label = sample(n_labels)
                     z[batch, zi*2:zi*2+2] = a_sample
                     z_id[batch] = a_label
-        return z, z_id
+        return z
     else:
         z = tf.cast(tf.random.normal((batch_size, n_dim), mean, var), tf.float32)
         return z

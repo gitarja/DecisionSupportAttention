@@ -15,28 +15,31 @@ class ConvBlock(K.layers.Layer):
         return x
 
 
-
 class FewShotModel(K.models.Model):
 
 
     def __init__(self, filters=64, z_dim=64):
         super(FewShotModel, self).__init__()
 
-        self.base = K.applications.ResNet50(weights="imagenet", include_top=False)
-        trainable = False
-        for layer in self.base.layers:
-            if layer.name == "conv5_block1_out":
-                trainable = True
-            layer.trainable = trainable
+
+        self.conv_1 = ConvBlock(filters=32)
+        self.conv_2 = ConvBlock(filters=filters)
+        self.conv_3 = ConvBlock(filters=filters)
+        self.conv_4 = ConvBlock(filters=filters)
         self.dense = K.layers.Dense(z_dim, activation=None)
         self.normalize = tf.keras.layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=1))
         self.flat = K.layers.Flatten()
-
+        self.avg = K.layers.AveragePooling2D(3)
+        self.max = K.layers.MaxPool2D(3)
 
 
 
     def call(self, inputs, training=None, mask=None):
-        z = self.base(inputs)
+
+        z = self.conv_1(inputs)
+        z = self.conv_2(z)
+        z = self.conv_3(z)
+        z = self.conv_4(z)
         z = self.dense(self.flat(z))
         z = self.normalize(z)
         return z
