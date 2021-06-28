@@ -1,28 +1,30 @@
 import tensorflow as tf
 import numpy as np
 import random
-from Omniglot.Conf import DATASET_PATH
-import numpy as np
 import matplotlib.pyplot as plt
 import pickle
+from PKU.Conf import DATASET_PATH
 from tensorflow.keras.applications import resnet
-
 
 class Dataset:
 
     def __init__(self, mode="training", val_frac=0.1):
 
         if mode=="training" or mode=="train_val":
-            with open(DATASET_PATH + "dataTrain.pickle", 'rb') as f:
+            with open(DATASET_PATH + "dataTrain.pkl", 'rb') as f:
                 ds = pickle.load(f)
         elif mode=="test":
-            with open(DATASET_PATH + "dataTest.pickle", 'rb') as f:
+            with open(DATASET_PATH + "dataTest.pkl", 'rb') as f:
                 ds = pickle.load(f)
 
         self.data = {}
 
-        def extraction(image):
-            image = tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1)
+        def extraction(image, idx=1):
+            image = tf.image.convert_image_dtype(image, tf.float32)
+            # if idx==1:
+            #     image = image / 255.
+            # else:
+            #     image = resnet.preprocess_input(image)
             return image
 
         for i in range(ds.shape[0]):
@@ -36,19 +38,19 @@ class Dataset:
         if mode == "train_val":
             random.seed(1)
             random.shuffle(self.labels)
-            self.val_labels = self.labels[:int(len(self.labels) *val_frac)] #take 20% classes as validation
+            self.val_labels = self.labels[:int(len(self.labels) *val_frac)] #take 10% classes as validation
             del self.labels[:int(len(self.labels) *val_frac)]
 
 
     def get_mini_batches(self, n_buffer, batch_size, shots, num_classes, validation=False):
 
         temp_labels = np.zeros(shape=(num_classes * shots))
-        temp_images = np.zeros(shape=(num_classes * shots, 105, 105, 1))
+        temp_images = np.zeros(shape=(num_classes * shots, 288, 144, 3))
         label_subsets = random.choices(self.labels, k=num_classes)
         if validation:
             label_subsets = self.val_labels
             temp_labels = np.zeros(shape=(len(label_subsets) * shots))
-            temp_images = np.zeros(shape=(len(label_subsets) * shots, 105, 105, 1))
+            temp_images = np.zeros(shape=(len(label_subsets) * shots, 288, 144, 3))
         for class_idx, class_obj in enumerate(label_subsets):
             temp_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
 
@@ -71,9 +73,9 @@ class Dataset:
     def get_batches(self, shots, num_classes):
         random.seed(0)
         temp_labels = np.zeros(shape=(num_classes))
-        temp_images = np.zeros(shape=(num_classes, 105, 105, 1))
+        temp_images = np.zeros(shape=(num_classes, 288, 144, 3))
         ref_labels = np.zeros(shape=(num_classes * shots))
-        ref_images = np.zeros(shape=(num_classes * shots, 105, 105, 1))
+        ref_images = np.zeros(shape=(num_classes * shots, 288, 144, 3))
 
         labels = self.labels
         random.shuffle(labels)
@@ -99,24 +101,25 @@ class Dataset:
 if __name__ == '__main__':
 
     test_dataset = Dataset(mode="test")
-    test_data = test_dataset.get_batches(shots=5, num_classes=5)
+    test_data = test_dataset.get_batches(shots=3, num_classes=5)
 
     # for _, data in enumerate(test_data):
     #     print(data)
 
-    _, axarr = plt.subplots(nrows=5, ncols=5, figsize=(20, 20))
+    _, axarr = plt.subplots(nrows=5, ncols=3, figsize=(20, 20))
 
     sample_keys = list(test_dataset.data.keys())
 
     for a in range(5):
-        for b in range(5):
+        for b in range(3):
             temp_image = test_dataset.data[sample_keys[a]][b]
-            temp_image = np.stack((temp_image[:, :, 0],) * 3, axis=2)
+            # temp_image = np.stack((temp_image[:, :, :],), axis=-1)
             temp_image *= 255
             temp_image = np.clip(temp_image, 0, 255).astype("uint8")
             if b == 2:
-                axarr[a, b].set_title("Class : " + sample_keys[a])
-            axarr[a, b].imshow(temp_image, cmap="gray")
+                axarr[a, b].set_title("Class : " +  sample_keys[a])
+            axarr[a, b].imshow(temp_image)
             axarr[a, b].xaxis.set_visible(False)
             axarr[a, b].yaxis.set_visible(False)
     plt.show()
+

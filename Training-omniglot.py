@@ -11,11 +11,13 @@ import numpy as np
 import datetime
 from Omniglot.Conf import TENSOR_BOARD_PATH
 import argparse
+from Utils.CustomLoss import DoubleHardTriplet
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--adversarial', type=bool, default=False)
+    parser.add_argument('--double_trip', type=bool, default=False)
 
     args = parser.parse_args()
 
@@ -70,7 +72,10 @@ if __name__ == '__main__':
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    triplet_loss = tfa.losses.TripletHardLoss(soft=True)
+    if args.double_trip == True:
+        triplet_loss = tfa.losses.TripletHardLoss(soft=True)
+    else:
+        triplet_loss = DoubleHardTriplet(soft=True)
     binary_loss = tf.losses.BinaryCrossentropy(from_logits=True)
 
     # optimizer
