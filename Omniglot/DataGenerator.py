@@ -1,4 +1,5 @@
 import tensorflow as tf
+import tensorflow.keras as K
 import numpy as np
 import random
 from Omniglot.Conf import DATASET_PATH
@@ -39,6 +40,11 @@ class Dataset:
             self.val_labels = self.labels[:int(len(self.labels) *val_frac)] #take 20% classes as validation
             del self.labels[:int(len(self.labels) *val_frac)]
 
+        self.data_preprocessing = K.Sequential([
+          K.layers.experimental.preprocessing.RandomFlip("horizontal_and_vertical"),
+                    K.layers.experimental.preprocessing.RandomRotation(0.2),
+        ])
+
 
     def get_mini_batches(self, n_buffer, batch_size, shots, num_classes, validation=False):
 
@@ -53,8 +59,8 @@ class Dataset:
             temp_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
 
             # sample images
-            temp_images[class_idx * shots: (class_idx + 1) * shots] = random.choices(
-                    self.data[label_subsets[class_idx]], k=shots)
+            temp_images[class_idx * shots: (class_idx + 1) * shots] = self.data_preprocessing(random.choices(
+                    self.data[label_subsets[class_idx]], k=shots))
 
         dataset = tf.data.Dataset.from_tensor_slices(
             (temp_images.astype(np.float32), temp_labels.astype(np.int32))

@@ -46,7 +46,7 @@ def kNN(query, q_labels, references, ref_labels, ref_num=1, th=0.5):
     # return np.average(predictions==q_y)
 
     #identify outliers or novel class
-    return classifier.predict(q) == q_y
+    return classifier.score(q, q_y)
 
 
 

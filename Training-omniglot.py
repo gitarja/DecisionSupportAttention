@@ -42,8 +42,8 @@ if __name__ == '__main__':
     eval_interval = 1
     train_shots = 20
     validation_shots = 20
-    classes = 100
-    inner_batch_size = 25
+    classes = 60
+    inner_batch_size = 50
     n_buffer = 100
     ref_num = 5
     val_loss_th = 1e+3
@@ -55,7 +55,7 @@ if __name__ == '__main__':
     lr_siamese = 1e-3
 
     # early stopping
-    early_th = 10
+    early_th = 5
     early_idx = 0
 
     # siamese and discriminator hyperparameter values

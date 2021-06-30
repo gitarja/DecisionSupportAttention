@@ -10,7 +10,7 @@ import numpy as np
 import random
 
 #checkpoint
-checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\adv\\20210629-233516\\model\\"
+checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\adv\\20210630-120718\\model\\"
 
 #model
 model = FewShotModel(filters=64, z_dim=64)
@@ -27,13 +27,13 @@ shots = 5
 
 acc_avg = []
 j = 0
-for i in range(2000):
+for i in range(1000):
     query, labels, references, ref_labels = test_dataset.get_batches(shots=shots, num_classes=way)
 
     val_logits = model(query, training=False)
     ref_logits = model(references, training=False)
 
-    acc = kNN(val_logits, labels, ref_logits, ref_labels, ref_num=5)
+    acc = kNN(val_logits, labels, ref_logits, ref_labels, ref_num=1)
         # dist = cosineSimilarity(val_logits, ref_logits, ref_num=5)
         # acc = computeACC(dist, labels)
     acc_avg.append(acc)
