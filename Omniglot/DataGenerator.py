@@ -54,6 +54,41 @@ class Dataset:
                     K.layers.experimental.preprocessing.RandomRotation(0.2),
         ])
 
+    def get_mini_offline_batches(self, n_buffer, batch_size,  validation=False):
+
+        anchor_positive = np.zeros(shape=(n_buffer, 28, 28, 1))
+        anchor_negative = np.zeros(shape=(n_buffer, 28, 28, 1))
+        pair_positive = np.zeros(shape=(n_buffer, 28, 28, 1))
+        pair_negative = np.zeros(shape=(n_buffer, 28, 28, 1))
+        labels = self.labels
+        if validation:
+            labels = self.val_labels
+
+
+        for i in range(n_buffer):
+            label_subsets = random.choices(labels, k=2)
+            positive_to_split = random.choices(
+                self.data[label_subsets[0]], k=2)
+            negative_to_split = random.choices(
+                self.data[label_subsets[1]], k=2)
+            #set anchor and pair positives
+            anchor_positive[i] = positive_to_split[0]
+            pair_positive[i] = positive_to_split[1]
+
+            # set anchor and pair negatives
+            anchor_negative[i] = negative_to_split[0]
+            pair_negative[i] = negative_to_split[1]
+
+
+        dataset = tf.data.Dataset.from_tensor_slices(
+            (anchor_positive.astype(np.float32), pair_positive.astype(np.float32), anchor_negative.astype(np.float32), pair_negative.astype(np.float32))
+        )
+        if validation:
+            dataset = dataset.batch(batch_size)
+        else:
+            dataset = dataset.shuffle(n_buffer).batch(batch_size)
+
+        return dataset
 
     def get_mini_batches(self, n_buffer, batch_size, shots, num_classes, validation=False):
 
@@ -97,8 +132,7 @@ class Dataset:
             ref_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
 
             # sample images
-            # images_to_split = random.choices(
-            #     self.data[label_subsets[class_idx]], k=shots+1)
+
             images_to_split = random.choices(
                 self.data[label_subsets[class_idx]], k=shots + 1)
             temp_images[class_idx] = images_to_split[-1]
