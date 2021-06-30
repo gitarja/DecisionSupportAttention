@@ -21,22 +21,24 @@ class FewShotModel(K.models.Model):
     def __init__(self, filters=64, z_dim=64):
         super(FewShotModel, self).__init__()
 
-
-        self.conv_1 = ConvBlock(filters=32)
+        self.data_preprocessing = K.Sequential([
+          K.layers.experimental.preprocessing.RandomFlip("horizontal_and_vertical"),
+                    K.layers.experimental.preprocessing.RandomRotation(0.2),
+        ])
+        self.conv_1 = ConvBlock(filters=filters)
         self.conv_2 = ConvBlock(filters=filters)
         self.conv_3 = ConvBlock(filters=filters)
         self.conv_4 = ConvBlock(filters=filters)
         self.dense = K.layers.Dense(z_dim, activation=None)
         self.normalize = tf.keras.layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=-1))
         self.flat = K.layers.Flatten()
-        self.avg = K.layers.AveragePooling2D(3)
-        self.max = K.layers.MaxPool2D(3)
+
 
 
 
     def call(self, inputs, training=None, mask=None):
-
-        z = self.conv_1(inputs)
+        z = self.data_preprocessing(inputs, training=training)
+        z = self.conv_1(z)
         z = self.conv_2(z)
         z = self.conv_3(z)
         z = self.conv_4(z)

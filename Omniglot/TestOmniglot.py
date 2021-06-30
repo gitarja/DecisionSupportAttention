@@ -7,9 +7,10 @@ import datetime
 from NNModels.FewShotModel import FewShotModel
 from Utils.Libs import kNN, euclidianMetric, computeACC, cosineSimilarity
 import numpy as np
+import random
 
 #checkpoint
-checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\adv\\20210628-183701\\model\\"
+checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\adv\\20210629-233516\\model\\"
 
 #model
 model = FewShotModel(filters=64, z_dim=64)
@@ -25,15 +26,17 @@ way = 5
 shots = 5
 
 acc_avg = []
-for i in range(4):
-    test_data = test_dataset.get_batches(shots=shots, num_classes=way)
-    for _, (query, labels, references, ref_labels) in enumerate(test_data):
-        val_logits = model(query, training=False)
-        ref_logits = model(references, training=False)
+j = 0
+for i in range(2000):
+    query, labels, references, ref_labels = test_dataset.get_batches(shots=shots, num_classes=way)
 
-        acc = kNN(val_logits, labels, ref_logits, ref_labels, ref_num=1)
+    val_logits = model(query, training=False)
+    ref_logits = model(references, training=False)
+
+    acc = kNN(val_logits, labels, ref_logits, ref_labels, ref_num=5)
         # dist = cosineSimilarity(val_logits, ref_logits, ref_num=5)
         # acc = computeACC(dist, labels)
-        acc_avg.append(acc)
+    acc_avg.append(acc)
+
 print(np.average(acc_avg))
 

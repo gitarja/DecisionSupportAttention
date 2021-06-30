@@ -12,6 +12,7 @@ import datetime
 from Omniglot.Conf import TENSOR_BOARD_PATH
 import argparse
 from Utils.CustomLoss import DoubleHardTriplet
+import random
 
 if __name__ == '__main__':
 
@@ -33,7 +34,7 @@ if __name__ == '__main__':
         except RuntimeError as e:
             # Memory growth must be set before GPUs have been initialized
             print(e)
-
+    random.seed(1) #set seed
     train_dataset = Dataset(mode="train_val", val_frac=0.1)
     test_dataset = Dataset(mode="test", val_frac=0.1)
 
@@ -41,7 +42,7 @@ if __name__ == '__main__':
     eval_interval = 1
     train_shots = 20
     validation_shots = 20
-    classes = 20
+    classes = 100
     inner_batch_size = 25
     n_buffer = 100
     ref_num = 5
@@ -54,7 +55,7 @@ if __name__ == '__main__':
     lr_siamese = 1e-3
 
     # early stopping
-    early_th = 5
+    early_th = 10
     early_idx = 0
 
     # siamese and discriminator hyperparameter values
@@ -73,9 +74,9 @@ if __name__ == '__main__':
 
     # loss
     if args.double_trip == True:
-        triplet_loss = tfa.losses.TripletHardLoss(soft=True)
-    else:
         triplet_loss = DoubleHardTriplet(soft=True)
+    else:
+        triplet_loss = tfa.losses.TripletSemiHardLoss()
     binary_loss = tf.losses.BinaryCrossentropy(from_logits=True)
 
     # optimizer
@@ -84,11 +85,11 @@ if __name__ == '__main__':
     siamese_optimizer = tf.optimizers.Adam(learning_rate=lr)
 
     if args.adversarial == True:  # using adversarial as well
-        discriminator_optimizer = tf.optimizers.Adam(lr=lr/5)
+        discriminator_optimizer = tf.optimizers.Adam(lr=lr)
         generator_optimizer = tf.optimizers.Adam(lr=lr)
 
     model = FewShotModel(filters=64, z_dim=z_dim)
-    disc_model = DiscriminatorModel(n_hidden=z_dim, n_output=1, dropout_rate=0.3)
+    disc_model = DiscriminatorModel(n_hidden=z_dim, n_output=1, dropout_rate=0.1)
 
     # check point
     checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
@@ -111,7 +112,7 @@ if __name__ == '__main__':
 
             for images, labels in mini_dataset:
                 # sample from gaussian mixture
-                samples = tf.math.l2_normalize(Gaussian(len(images), z_dim, mean=0, var=1.), -1)
+                samples = tf.math.l2_normalize(GaussianMultivariate(len(images), z_dim, mean=0, var=1.), -1)
 
                 with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
                     train_logits = model(images, training=True)
