@@ -11,7 +11,6 @@ import numpy as np
 import datetime
 from Omniglot.Conf import TENSOR_BOARD_PATH
 import argparse
-from Utils.CustomLoss import DoubleHardTriplet
 import random
 
 if __name__ == '__main__':
@@ -39,7 +38,7 @@ if __name__ == '__main__':
     test_dataset = Dataset(mode="test", val_frac=0.1)
 
     # training setting
-    eval_interval = 1
+    eval_interval = 100
     train_shots = 20
     validation_shots = 20
     classes = 60
@@ -49,13 +48,12 @@ if __name__ == '__main__':
     val_loss_th = 1e+3
 
     # training setting
-    epochs = 50
-    episodes = 100
+    episodes = 5000
     lr = 1e-3
     lr_siamese = 1e-3
 
     # early stopping
-    early_th = 5
+    early_th = 10
     early_idx = 0
 
     # siamese and discriminator hyperparameter values
@@ -82,7 +80,12 @@ if __name__ == '__main__':
     # optimizer
 
     # siamese_optimizer = tfa.optimizers.RectifiedAdam(lr=lr_siamese, total_steps=epochs*episodes*4, warmup_proportion=0.1, min_lr=1e-5)
-    siamese_optimizer = tf.optimizers.Adam(learning_rate=lr)
+    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+        lr,
+        decay_steps=1000,
+        decay_rate=0.96,
+        staircase=True)
+    siamese_optimizer = tf.optimizers.Adam(learning_rate=lr_schedule)
 
     if args.adversarial == True:  # using adversarial as well
         discriminator_optimizer = tf.optimizers.Adam(lr=lr)
@@ -101,7 +104,7 @@ if __name__ == '__main__':
                                                  validation_shots, classes, validation=True,
                                                  )
 
-    for epoch in range(episodes):
+    for ep in range(episodes):
         # dataset
         train_loss = []
 
@@ -117,9 +120,7 @@ if __name__ == '__main__':
             with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
                 train_logits = model(images, training=True)
                 embd_loss = triplet_loss(labels, train_logits)  # triplet loss
-                print(embd_loss)
                 train_loss.append(embd_loss)
-
                 if args.adversarial == True:  # using adversarial as well
                     # generative
 
@@ -145,7 +146,7 @@ if __name__ == '__main__':
                 discriminator_optimizer.apply_gradients(zip(discriminator_grads, disc_model.trainable_weights))
                 generator_optimizer.apply_gradients(zip(generator_grads, disc_model.trainable_weights))
 
-        if (epoch + 1) % eval_interval == 0:
+        if (ep + 1) % eval_interval == 0:
             val_loss = []
             manager.save()
             for test_images, test_labels in val_dataset:
@@ -153,6 +154,14 @@ if __name__ == '__main__':
                 loss = triplet_loss(test_labels, logits)
                 val_loss.append(loss)
             val_loss = tf.reduce_mean(val_loss)
+            with train_summary_writer.as_default():
+                tf.summary.scalar('loss', tf.reduce_mean(train_loss), step=ep)
+            with test_summary_writer.as_default():
+                tf.summary.scalar('loss', val_loss, step=ep)
+            print("Training loss=%f, validation loss=%f" % (
+                tf.reduce_mean(train_loss), val_loss))  # print train and val losses.
+
+
             if (val_loss_th > val_loss):
                 val_loss_th = val_loss
 
@@ -162,9 +171,5 @@ if __name__ == '__main__':
             if early_idx == early_th:
                 break
 
-        with train_summary_writer.as_default():
-            tf.summary.scalar('loss', tf.reduce_mean(train_loss), step=epoch)
-        with test_summary_writer.as_default():
-            tf.summary.scalar('loss', val_loss, step=epoch)
-        print("Training loss=%f, validation loss=%f" % (
-            tf.reduce_mean(train_loss), val_loss))  # print train and val losses
+
+

@@ -10,7 +10,7 @@ import numpy as np
 import random
 
 #checkpoint
-checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\adv\\20210630-120718\\model\\"
+checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\20210630-175224\\model\\"
 
 #model
 model = FewShotModel(filters=64, z_dim=64)

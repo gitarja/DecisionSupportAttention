@@ -26,9 +26,9 @@ class DoubleTriplet():
         d_pos_neg = tf.reduce_sum(tf.square(ap - an), 1) #distance between positive and negative anchor
 
         if self.soft:
-            triplet_loss = tf.math.log1p(tf.math.exp(d_neg + d_pos - d_pos_neg))
+            triplet_loss = tf.math.log1p(tf.math.exp((d_neg + d_pos) - d_pos_neg))
         else:
-            triplet_loss = tf.maximum(0.0, self.margin + d_neg + d_pos - d_pos_neg)
+            triplet_loss = tf.maximum(0.0, (self.margin + d_neg + d_pos) - d_pos_neg)
         # Get final mean triplet loss
         triplet_loss = tf.reduce_mean(triplet_loss)
 
