@@ -101,48 +101,49 @@ if __name__ == '__main__':
                                                  validation_shots, classes, validation=True,
                                                  )
 
-    for epoch in range(epochs):
+    for epoch in range(episodes):
         # dataset
         train_loss = []
-        for ep in range(episodes):
-            mini_dataset = train_dataset.get_mini_batches(n_buffer,
-                                                          inner_batch_size,
-                                                          train_shots, classes, validation=False,
-                                                          )
 
-            for images, labels in mini_dataset:
-                # sample from gaussian mixture
-                samples = tf.math.l2_normalize(GaussianMultivariate(len(images), z_dim, mean=0, var=1.), -1)
+        mini_dataset = train_dataset.get_mini_batches(n_buffer,
+                                                      inner_batch_size,
+                                                      train_shots, classes, validation=False,
+                                                      )
 
-                with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
-                    train_logits = model(images, training=True)
-                    embd_loss = triplet_loss(labels, train_logits)  # triplet loss
-                    train_loss.append(embd_loss)
+        for images, labels in mini_dataset:
+            # sample from gaussian mixture
+            samples = tf.math.l2_normalize(GaussianMultivariate(len(images), z_dim, mean=0, var=1.), -1)
 
-                    if args.adversarial == True:  # using adversarial as well
-                        # generative
-
-                        z_fake = disc_model(train_logits, training=True)
-                        z_true = disc_model(samples, training=True)
-
-                        # discriminator loss
-                        D_loss_fake = binary_loss(z_fake, tf.zeros_like(z_fake))
-                        D_loss_real = binary_loss(z_true, tf.ones_like(z_true))
-                        D_loss = D_loss_real + D_loss_fake
-
-                        # generator loss
-                        G_loss = binary_loss(z_fake, tf.ones_like(z_fake))
-
-                    # Use the gradient tape to automatically retrieve
-                    # the gradients of the trainable variables with respect to the loss.
-                siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
-                siamese_optimizer.apply_gradients(zip(siamese_grads, model.trainable_weights))
+            with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
+                train_logits = model(images, training=True)
+                embd_loss = triplet_loss(labels, train_logits)  # triplet loss
+                print(embd_loss)
+                train_loss.append(embd_loss)
 
                 if args.adversarial == True:  # using adversarial as well
-                    discriminator_grads = discriminator_tape.gradient(D_loss, disc_model.trainable_weights)
-                    generator_grads = generator_tape.gradient(G_loss, disc_model.trainable_weights)
-                    discriminator_optimizer.apply_gradients(zip(discriminator_grads, disc_model.trainable_weights))
-                    generator_optimizer.apply_gradients(zip(generator_grads, disc_model.trainable_weights))
+                    # generative
+
+                    z_fake = disc_model(train_logits, training=True)
+                    z_true = disc_model(samples, training=True)
+
+                    # discriminator loss
+                    D_loss_fake = binary_loss(z_fake, tf.zeros_like(z_fake))
+                    D_loss_real = binary_loss(z_true, tf.ones_like(z_true))
+                    D_loss = D_loss_real + D_loss_fake
+
+                    # generator loss
+                    G_loss = binary_loss(z_fake, tf.ones_like(z_fake))
+
+                # Use the gradient tape to automatically retrieve
+                # the gradients of the trainable variables with respect to the loss.
+            siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
+            siamese_optimizer.apply_gradients(zip(siamese_grads, model.trainable_weights))
+
+            if args.adversarial == True:  # using adversarial as well
+                discriminator_grads = discriminator_tape.gradient(D_loss, disc_model.trainable_weights)
+                generator_grads = generator_tape.gradient(G_loss, disc_model.trainable_weights)
+                discriminator_optimizer.apply_gradients(zip(discriminator_grads, disc_model.trainable_weights))
+                generator_optimizer.apply_gradients(zip(generator_grads, disc_model.trainable_weights))
 
         if (epoch + 1) % eval_interval == 0:
             val_loss = []
@@ -157,15 +158,13 @@ if __name__ == '__main__':
 
                 early_idx = 0
             else:
-                early_idx+=1
+                early_idx += 1
             if early_idx == early_th:
                 break
 
-            with train_summary_writer.as_default():
-                tf.summary.scalar('loss', tf.reduce_mean(train_loss), step=epoch)
-            with test_summary_writer.as_default():
-                tf.summary.scalar('loss', val_loss, step=epoch)
-            print("Training loss=%f, validation loss=%f" % (
+        with train_summary_writer.as_default():
+            tf.summary.scalar('loss', tf.reduce_mean(train_loss), step=epoch)
+        with test_summary_writer.as_default():
+            tf.summary.scalar('loss', val_loss, step=epoch)
+        print("Training loss=%f, validation loss=%f" % (
             tf.reduce_mean(train_loss), val_loss))  # print train and val losses
-
-

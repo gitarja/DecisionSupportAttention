@@ -22,20 +22,29 @@ class Dataset:
 
         self.data = {}
 
-        def extraction(image):
+        def extraction(image, degree=0):
             image = tf.image.resize(tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1), [28, 28])
+            if degree!=0:
+                image = tf.image.rot90(image, k=degree)
             return image
-
-        for i in range(ds.shape[0]):
-            for l in range(ds[i].shape[0]):
-                label = str(i)
-                if label not in self.data:
-                    self.data[label] = []
-                self.data[label].append(extraction(ds[i, l, :, :]))
+        if mode == "test":
+            for i in range(ds.shape[0]):
+                for l in range(ds[i].shape[0]):
+                    label = str(i)
+                    if label not in self.data:
+                        self.data[label] = []
+                    self.data[label].append(extraction(ds[i, l, :, :]))
+        else:
+            for i in range(ds.shape[0]):
+                for j in range(4):
+                    for l in range(ds[i].shape[0]):
+                        label = str(i*j)
+                        if label not in self.data:
+                            self.data[label] = []
+                        self.data[label].append(extraction(ds[i, l, :, :], j))
 
         self.labels = list(self.data.keys())
         if mode == "train_val":
-
             random.shuffle(self.labels)
             self.val_labels = self.labels[:int(len(self.labels) *val_frac)] #take 20% classes as validation
             del self.labels[:int(len(self.labels) *val_frac)]
@@ -59,8 +68,8 @@ class Dataset:
             temp_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
 
             # sample images
-            temp_images[class_idx * shots: (class_idx + 1) * shots] = self.data_preprocessing(random.choices(
-                    self.data[label_subsets[class_idx]], k=shots))
+            temp_images[class_idx * shots: (class_idx + 1) * shots] = random.choices(
+                    self.data[label_subsets[class_idx]], k=shots)
 
         dataset = tf.data.Dataset.from_tensor_slices(
             (temp_images.astype(np.float32), temp_labels.astype(np.int32))
