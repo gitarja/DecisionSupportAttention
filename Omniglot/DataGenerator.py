@@ -35,13 +35,14 @@ class Dataset:
                         self.data[label] = []
                     self.data[label].append(extraction(ds[i, l, :, :]))
         else:
+            label = 0
             for i in range(ds.shape[0]):
                 for j in range(4):
                     for l in range(ds[i].shape[0]):
-                        label = str(i*j)
                         if label not in self.data:
                             self.data[label] = []
                         self.data[label].append(extraction(ds[i, l, :, :], j))
+                    label+=1
 
         self.labels = list(self.data.keys())
         if mode == "train_val":
@@ -49,17 +50,14 @@ class Dataset:
             self.val_labels = self.labels[:int(len(self.labels) *val_frac)] #take 20% classes as validation
             del self.labels[:int(len(self.labels) *val_frac)]
 
-        self.data_preprocessing = K.Sequential([
-          K.layers.experimental.preprocessing.RandomFlip("horizontal_and_vertical"),
-                    K.layers.experimental.preprocessing.RandomRotation(0.2),
-        ])
 
-    def get_mini_offline_batches(self, n_buffer, batch_size,  validation=False):
 
-        anchor_positive = np.zeros(shape=(n_buffer, 28, 28, 1))
-        anchor_negative = np.zeros(shape=(n_buffer, 28, 28, 1))
-        pair_positive = np.zeros(shape=(n_buffer, 28, 28, 1))
-        pair_negative = np.zeros(shape=(n_buffer, 28, 28, 1))
+    def get_mini_offline_batches(self, n_buffer, batch_size, shots=2,  validation=False):
+
+        anchor_positive = np.zeros(shape=(n_buffer * shots, 28, 28, 1))
+        anchor_negative = np.zeros(shape=(n_buffer * shots, 28, 28, 1))
+        pair_positive = np.zeros(shape=(n_buffer * shots, 28, 28, 1))
+        pair_negative = np.zeros(shape=(n_buffer * shots, 28, 28, 1))
         labels = self.labels
         if validation:
             labels = self.val_labels
@@ -68,16 +66,16 @@ class Dataset:
         for i in range(n_buffer):
             label_subsets = random.choices(labels, k=2)
             positive_to_split = random.choices(
-                self.data[label_subsets[0]], k=2)
+                self.data[label_subsets[0]], k=shots)
             negative_to_split = random.choices(
-                self.data[label_subsets[1]], k=2)
+                self.data[label_subsets[1]], k=shots)
             #set anchor and pair positives
-            anchor_positive[i] = positive_to_split[0]
-            pair_positive[i] = positive_to_split[1]
+            anchor_positive[i*shots:(i+1) * shots] = positive_to_split[0]
+            pair_positive[i*shots:(i+1) * shots] = positive_to_split[1]
 
             # set anchor and pair negatives
-            anchor_negative[i] = negative_to_split[0]
-            pair_negative[i] = negative_to_split[1]
+            anchor_negative[i*shots:(i+1) * shots] = negative_to_split[0]
+            pair_negative[i*shots:(i+1) * shots] = negative_to_split[1]
 
 
         dataset = tf.data.Dataset.from_tensor_slices(

@@ -10,7 +10,7 @@ import numpy as np
 import random
 
 #checkpoint
-checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\20210630-175224\\model\\"
+checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\20210701-051956\\model\\"
 
 #model
 model = FewShotModel(filters=64, z_dim=64)
@@ -26,7 +26,7 @@ way = 5
 shots = 5
 
 acc_avg = []
-j = 0
+random.seed(2)
 for i in range(1000):
     query, labels, references, ref_labels = test_dataset.get_batches(shots=shots, num_classes=way)
 
@@ -38,5 +38,6 @@ for i in range(1000):
         # acc = computeACC(dist, labels)
     acc_avg.append(acc)
 
+print(i)
 print(np.average(acc_avg))
 

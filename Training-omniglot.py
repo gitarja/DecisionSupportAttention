@@ -35,7 +35,6 @@ if __name__ == '__main__':
             print(e)
     random.seed(1) #set seed
     train_dataset = Dataset(mode="train_val", val_frac=0.1)
-    test_dataset = Dataset(mode="test", val_frac=0.1)
 
     # training setting
     eval_interval = 100
@@ -71,10 +70,8 @@ if __name__ == '__main__':
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    if args.double_trip == True:
-        triplet_loss = DoubleHardTriplet(soft=True)
-    else:
-        triplet_loss = tfa.losses.TripletSemiHardLoss()
+
+    triplet_loss = tfa.losses.TripletSemiHardLoss()
     binary_loss = tf.losses.BinaryCrossentropy(from_logits=True)
 
     # optimizer
@@ -88,11 +85,11 @@ if __name__ == '__main__':
     siamese_optimizer = tf.optimizers.Adam(learning_rate=lr_schedule)
 
     if args.adversarial == True:  # using adversarial as well
-        discriminator_optimizer = tf.optimizers.Adam(lr=lr)
+        discriminator_optimizer = tf.optimizers.Adam(lr=lr/3)
         generator_optimizer = tf.optimizers.Adam(lr=lr)
 
     model = FewShotModel(filters=64, z_dim=z_dim)
-    disc_model = DiscriminatorModel(n_hidden=z_dim, n_output=1, dropout_rate=0.1)
+    disc_model = DiscriminatorModel(n_hidden=z_dim, n_output=1, dropout_rate=0.3)
 
     # check point
     checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
@@ -162,14 +159,14 @@ if __name__ == '__main__':
                 tf.reduce_mean(train_loss), val_loss))  # print train and val losses.
 
 
-            if (val_loss_th > val_loss):
-                val_loss_th = val_loss
-
-                early_idx = 0
-            else:
-                early_idx += 1
-            if early_idx == early_th:
-                break
+            # if (val_loss_th > val_loss):
+            #     val_loss_th = val_loss
+            #
+            #     early_idx = 0
+            # else:
+            #     early_idx += 1
+            # if early_idx == early_th:
+            #     break
 
 
 
