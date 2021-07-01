@@ -116,28 +116,45 @@ class Dataset:
 
     # def get_train_batches(self):
 
-    def get_batches(self, shots, num_classes):
+    # def get_train_batches(self):
+
+    def get_batches(self, shots, num_classes, outlier=False):
 
         temp_labels = np.zeros(shape=(num_classes))
         temp_images = np.zeros(shape=(num_classes, 28, 28, 1))
         ref_labels = np.zeros(shape=(num_classes * shots))
         ref_images = np.zeros(shape=(num_classes * shots, 28, 28, 1))
 
-        label_subsets = random.choices(self.labels, k=num_classes)
 
-        for class_idx, class_obj in enumerate(label_subsets):
-            temp_labels[class_idx] = class_idx
-            ref_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
+        if outlier == False:
+            label_subsets = random.choices(self.labels, k=num_classes)
+            for class_idx, class_obj in enumerate(label_subsets):
+                temp_labels[class_idx] = class_idx
+                ref_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
 
-            # sample images
+                # sample images
 
-            images_to_split = random.choices(
-                self.data[label_subsets[class_idx]], k=shots + 1)
-            temp_images[class_idx] = images_to_split[-1]
-            ref_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[:-1]
+                images_to_split = random.choices(
+                    self.data[label_subsets[class_idx]], k=shots + 1)
+                temp_images[class_idx] = images_to_split[-1]
+                ref_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[:-1]
+        else:
+            # generate support
+            support_labels = random.choices(self.labels[:int(len(self.labels)/2)], k=num_classes)
+            for class_idx, class_obj in enumerate(support_labels):
+                ref_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
+                ref_images[class_idx * shots: (class_idx + 1) * shots] = random.choices(
+                    self.data[support_labels[class_idx]], k=shots)
+
+            # generate query
+            query_labels = random.choices(self.labels[int(len(self.labels) / 2):], k=num_classes)
+            for class_idx, class_obj in enumerate(query_labels):
+                temp_labels[class_idx ] = class_idx
+                ref_images[class_idx] = random.choices(self.data[query_labels[class_idx]])
 
         return temp_images.astype(np.float32), temp_labels.astype(np.int32), ref_images.astype(
             np.float32), ref_labels.astype(np.float32)
+
 
 
 if __name__ == '__main__':

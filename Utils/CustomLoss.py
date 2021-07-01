@@ -30,7 +30,7 @@ class DoubleTriplet():
         else:
             triplet_loss = tf.maximum(0.0, (self.margin + d_neg + d_pos) - d_pos_neg)
         # Get final mean triplet loss
-        triplet_loss = tf.reduce_mean(triplet_loss)
+        triplet_loss = tf.reduce_mean(triplet_loss, axis=-1)
 
         return triplet_loss
 
