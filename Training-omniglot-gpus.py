@@ -50,7 +50,7 @@ if __name__ == '__main__':
     ref_num = 5
     val_loss_th = 1e+3
     shots=20
-
+    ALL_BATCH_SIZE = inner_batch_size * strategy.num_replicas_in_sync
     # training setting
     episodes = 5000
     lr = 1e-3
