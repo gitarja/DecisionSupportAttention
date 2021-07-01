@@ -41,7 +41,7 @@ if __name__ == '__main__':
     train_shots = 20
     validation_shots = 20
     classes = 60
-    inner_batch_size = 50
+    inner_batch_size = 25
     n_buffer = 100
     ref_num = 5
     val_loss_th = 1e+3
@@ -139,9 +139,9 @@ if __name__ == '__main__':
 
             if args.adversarial == True:  # using adversarial as well
                 discriminator_grads = discriminator_tape.gradient(D_loss, disc_model.trainable_weights)
-                generator_grads = generator_tape.gradient(G_loss, disc_model.trainable_weights)
+                generator_grads = generator_tape.gradient(G_loss, model.trainable_weights)
                 discriminator_optimizer.apply_gradients(zip(discriminator_grads, disc_model.trainable_weights))
-                generator_optimizer.apply_gradients(zip(generator_grads, disc_model.trainable_weights))
+                generator_optimizer.apply_gradients(zip(generator_grads, model.trainable_weights))
 
         if (ep + 1) % eval_interval == 0:
             val_loss = []

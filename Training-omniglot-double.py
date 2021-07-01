@@ -142,9 +142,9 @@ if __name__ == '__main__':
 
             if args.adversarial == True:  # using adversarial as well
                 discriminator_grads = discriminator_tape.gradient(D_loss, disc_model.trainable_weights)
-                generator_grads = generator_tape.gradient(G_loss, disc_model.trainable_weights)
+                generator_grads = generator_tape.gradient(G_loss, model.trainable_weights)
                 discriminator_optimizer.apply_gradients(zip(discriminator_grads, disc_model.trainable_weights))
-                generator_optimizer.apply_gradients(zip(generator_grads, disc_model.trainable_weights))
+                generator_optimizer.apply_gradients(zip(generator_grads, model.trainable_weights))
 
         if (epoch + 1) % eval_interval == 0:
             val_loss = []

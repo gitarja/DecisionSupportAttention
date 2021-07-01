@@ -10,7 +10,7 @@ import numpy as np
 import random
 
 #checkpoint
-checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\20210701-051956\\model\\"
+checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\20210701-135318_double\\model\\"
 
 #model
 model = FewShotModel(filters=64, z_dim=64)
@@ -22,22 +22,22 @@ checkpoint.restore(manager.latest_checkpoint)
 
 # dataset
 test_dataset = Dataset(mode="test")
-way = 5
 shots = 5
 
-acc_avg = []
+
 random.seed(2)
-for i in range(1000):
-    query, labels, references, ref_labels = test_dataset.get_batches(shots=shots, num_classes=way)
+for way in [5, 20, 50, 100]:
+    acc_avg = []
+    for i in range(1000):
+        query, labels, references, ref_labels = test_dataset.get_batches(shots=shots, num_classes=way)
 
-    val_logits = model(query, training=False)
-    ref_logits = model(references, training=False)
+        val_logits = model(query, training=False)
+        ref_logits = model(references, training=False)
 
-    acc = kNN(val_logits, labels, ref_logits, ref_labels, ref_num=1)
-        # dist = cosineSimilarity(val_logits, ref_logits, ref_num=5)
-        # acc = computeACC(dist, labels)
-    acc_avg.append(acc)
+        acc = kNN(val_logits, labels, ref_logits, ref_labels, ref_num=1)
+            # dist = cosineSimilarity(val_logits, ref_logits, ref_num=5)
+            # acc = computeACC(dist, labels)
+        acc_avg.append(acc)
 
-print(i)
-print(np.average(acc_avg))
+    print(np.average(acc_avg))
 

@@ -13,6 +13,9 @@ from Omniglot.Conf import TENSOR_BOARD_PATH
 import argparse
 from Utils.CustomLoss import DoubleTriplet
 import random
+import os
+
+os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
 
 if __name__ == '__main__':
 
@@ -45,12 +48,13 @@ if __name__ == '__main__':
     # training setting
     eval_interval = 100
     inner_batch_size = 25
-    train_buffer = 100
+    ALL_BATCH_SIZE = inner_batch_size * strategy.num_replicas_in_sync
+    train_buffer = ALL_BATCH_SIZE
     val_buffer = 100
     ref_num = 5
     val_loss_th = 1e+3
     shots=20
-    ALL_BATCH_SIZE = inner_batch_size * strategy.num_replicas_in_sync
+
     # training setting
     episodes = 5000
     lr = 1e-3
@@ -74,47 +78,42 @@ if __name__ == '__main__':
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
-
-
-    # optimizer
-    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-        lr,
-        decay_steps=1000,
-        decay_rate=0.96,
-        staircase=True)
-    siamese_optimizer = tf.optimizers.Adam(learning_rate=lr_schedule)
-
-    if args.adversarial == True:  # using adversarial as well
-        discriminator_optimizer = tf.optimizers.Adam(lr=lr)
-        generator_optimizer = tf.optimizers.Adam(lr=lr)
-    with strategy.scope():
-        model = FewShotModel(filters=64, z_dim=z_dim)
-        disc_model = DiscriminatorModel(n_hidden=z_dim, n_output=1, dropout_rate=0.1)
-
-    # check point
-    checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
-    manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=3)
-
-    # validation dataset
-    val_dataset = train_dataset.get_mini_offline_batches(val_buffer,
-                                                         inner_batch_size,shots=shots,
-                                                         validation=True,
-                                                         )
-
-    #metrics
-    # train
-    loss_train = tf.keras.metrics.Mean()
-    # test
-    loss_test = tf.keras.metrics.Mean()
-
     # loss
     triplet_loss = DoubleTriplet()
     binary_loss = tf.losses.BinaryCrossentropy(from_logits=True, reduction=tf.keras.losses.Reduction.NONE)
 
     with strategy.scope():
+        model = FewShotModel(filters=64, z_dim=z_dim)
+        disc_model = DiscriminatorModel(n_hidden=z_dim, n_output=1, dropout_rate=0.1)
+        # check point
+        checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
+        manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=3)
+
+        # optimizer
+        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+            lr,
+            decay_steps=1000,
+            decay_rate=0.96,
+            staircase=True)
+        siamese_optimizer = tf.optimizers.Adam(learning_rate=lr_schedule)
+
+        if args.adversarial == True:  # using adversarial as well
+            discriminator_optimizer = tf.optimizers.Adam(lr=lr)
+            generator_optimizer = tf.optimizers.Adam(lr=lr)
+
+        #metrics
+        # train
+        loss_train = tf.keras.metrics.Mean()
+        # test
+        loss_test = tf.keras.metrics.Mean()
+
+
+
+    with strategy.scope():
         def compute_triplet_loss(ap, pp, an, pn, global_batch_size):
             per_example_loss = triplet_loss(ap, pp, an, pn)
             return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
+
         def compute_binary_loss(labels, predictions, global_batch_size):
             per_example_loss = binary_loss(labels, predictions)
             return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
@@ -152,11 +151,11 @@ if __name__ == '__main__':
 
             if args.adversarial == True:  # using adversarial as well
                 discriminator_grads = discriminator_tape.gradient(D_loss, disc_model.trainable_weights)
-                generator_grads = generator_tape.gradient(G_loss, disc_model.trainable_weights)
+                generator_grads = generator_tape.gradient(G_loss, model.trainable_weights)
                 discriminator_optimizer.apply_gradients(zip(discriminator_grads, disc_model.trainable_weights))
-                generator_optimizer.apply_gradients(zip(generator_grads, disc_model.trainable_weights))
+                generator_optimizer.apply_gradients(zip(generator_grads, model.trainable_weights))
             loss_train(embd_loss)
-            return embd_loss, D_loss, G_loss
+            return embd_loss
 
 
         def val_step(inputs, GLOBAL_BATCH_SIZE=0):
@@ -177,16 +176,23 @@ if __name__ == '__main__':
         # `experimental_run_v2` replicates the provided computation and runs it
         # with the distributed input.
         @tf.function
-        def distributed_train_step(dataset_inputs):
-            per_replica_losses = strategy.experimental_run_v2(train_step,
-                                                              args=(dataset_inputs,))
+        def distributed_train_step(dataset_inputs, GLOBAL_BATCH_SIZE):
+            per_replica_losses = strategy.run(train_step,
+                                                              args=(dataset_inputs, GLOBAL_BATCH_SIZE))
             return strategy.reduce(tf.distribute.ReduceOp.SUM, per_replica_losses,
                                    axis=None)
 
 
         @tf.function
-        def distributed_test_step(dataset_inputs):
-            return strategy.experimental_run_v2(val_step, args=(dataset_inputs,))
+        def distributed_test_step(dataset_inputs, GLOBAL_BATCH_SIZE):
+            return strategy.run(val_step, args=(dataset_inputs,GLOBAL_BATCH_SIZE))
+
+
+        # validation dataset
+        val_dataset = train_dataset.get_mini_offline_batches(val_buffer,
+                                                             inner_batch_size, shots=shots,
+                                                             validation=True,
+                                                             )
 
         for epoch in range(episodes):
             # dataset
@@ -196,19 +202,19 @@ if __name__ == '__main__':
                                                                   )
 
             for ap, pp, an, pn in mini_dataset:
-                distributed_train_step([ap, pp, an, pn])
+                distributed_train_step([ap, pp, an, pn], ALL_BATCH_SIZE)
 
             if (epoch + 1) % eval_interval == 0:
                 manager.save()
                 for ap, pp, an, pn in val_dataset:
-                    distributed_test_step([ap, pp, an, pn])
-
+                    distributed_test_step([ap, pp, an, pn], ALL_BATCH_SIZE)
                 with train_summary_writer.as_default():
                     tf.summary.scalar('loss', loss_train.result().numpy(), step=epoch)
                 with test_summary_writer.as_default():
                     tf.summary.scalar('loss', loss_test.result().numpy(), step=epoch)
                 print("Training loss=%f, validation loss=%f" % (
                     loss_train.result().numpy(), loss_test.result().numpy()))  # print train and val losses
+                reset_metric()
                 #
                 # if (val_loss_th > val_loss):
                 #     val_loss_th = val_loss
