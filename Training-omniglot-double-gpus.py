@@ -49,7 +49,7 @@ if __name__ == '__main__':
     eval_interval = 100
     inner_batch_size = 25
     ALL_BATCH_SIZE = inner_batch_size * strategy.num_replicas_in_sync
-    train_buffer = ALL_BATCH_SIZE
+    train_buffer = ALL_BATCH_SIZE * 4
     val_buffer = 100
     ref_num = 5
     val_loss_th = 1e+3

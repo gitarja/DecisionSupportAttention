@@ -53,15 +53,17 @@ class Dataset:
 
 
     def get_mini_offline_batches(self, n_buffer, batch_size, shots=2,  validation=False):
-
-        anchor_positive = np.zeros(shape=(n_buffer * shots, 28, 28, 1))
-        anchor_negative = np.zeros(shape=(n_buffer * shots, 28, 28, 1))
-        pair_positive = np.zeros(shape=(n_buffer * shots, 28, 28, 1))
-        pair_negative = np.zeros(shape=(n_buffer * shots, 28, 28, 1))
+        half_shot = int(shots / 2)
+        anchor_positive = np.zeros(shape=(n_buffer * half_shot, 28, 28, 1))
+        anchor_negative = np.zeros(shape=(n_buffer * half_shot, 28, 28, 1))
+        pair_positive = np.zeros(shape=(n_buffer * half_shot, 28, 28, 1))
+        pair_negative = np.zeros(shape=(n_buffer * half_shot, 28, 28, 1))
         labels = self.labels
         if validation:
             labels = self.val_labels
 
+        if shots % 2 != 0:
+            raise ("Shots must be even")
 
         for i in range(n_buffer):
             label_subsets = random.choices(labels, k=2)
@@ -70,12 +72,13 @@ class Dataset:
             negative_to_split = random.choices(
                 self.data[label_subsets[1]], k=shots)
             #set anchor and pair positives
-            anchor_positive[i*shots:(i+1) * shots] = positive_to_split[0]
-            pair_positive[i*shots:(i+1) * shots] = positive_to_split[1]
+
+            anchor_positive[i*half_shot:(i+1) * half_shot] = positive_to_split[:half_shot]
+            pair_positive[i*half_shot:(i+1) * half_shot] = positive_to_split[half_shot:]
 
             # set anchor and pair negatives
-            anchor_negative[i*shots:(i+1) * shots] = negative_to_split[0]
-            pair_negative[i*shots:(i+1) * shots] = negative_to_split[1]
+            anchor_negative[i*half_shot:(i+1) * half_shot] = negative_to_split[:half_shot]
+            pair_negative[i*half_shot:(i+1) * half_shot] = negative_to_split[half_shot:]
 
 
         dataset = tf.data.Dataset.from_tensor_slices(

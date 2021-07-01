@@ -112,7 +112,7 @@ if __name__ == '__main__':
 
         for images, labels in mini_dataset:
             # sample from gaussian mixture
-            samples = tf.math.l2_normalize(GaussianMultivariate(len(images), z_dim, mean=0, var=1.), -1)
+            samples = GaussianMultivariate(len(images), z_dim, mean=0, var=1.)
 
             with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
                 train_logits = model(images, training=True)
@@ -132,16 +132,17 @@ if __name__ == '__main__':
                     # generator loss
                     G_loss = binary_loss(z_fake, tf.ones_like(z_fake))
 
-                # Use the gradient tape to automatically retrieve
-                # the gradients of the trainable variables with respect to the loss.
-            siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
-            siamese_optimizer.apply_gradients(zip(siamese_grads, model.trainable_weights))
-
             if args.adversarial == True:  # using adversarial as well
                 discriminator_grads = discriminator_tape.gradient(D_loss, disc_model.trainable_weights)
                 generator_grads = generator_tape.gradient(G_loss, model.trainable_weights)
                 discriminator_optimizer.apply_gradients(zip(discriminator_grads, disc_model.trainable_weights))
                 generator_optimizer.apply_gradients(zip(generator_grads, model.trainable_weights))
+            # Use the gradient tape to automatically retrieve
+            # the gradients of the trainable variables with respect to the loss.
+            siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
+            siamese_optimizer.apply_gradients(zip(siamese_grads, model.trainable_weights))
+
+
 
         if (ep + 1) % eval_interval == 0:
             val_loss = []
