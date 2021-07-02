@@ -38,8 +38,9 @@ class DoubleTriplet():
 
 class EntropyDoubleAnchor(K.losses.Loss):
 
-    def __init__(self, reduction=tf.keras.losses.Reduction.AUTO, name='EntropyDoubleAnchorLoss'):
+    def __init__(self, k = 20, reduction=tf.keras.losses.Reduction.AUTO, name='EntropyDoubleAnchorLoss'):
         super().__init__(reduction=reduction, name=name)
+        self.k = k
 
     def call(self, y_true, y_pred):
         '''
@@ -53,7 +54,7 @@ class EntropyDoubleAnchor(K.losses.Loss):
         y_pull_in = tf.cast(y_pull_in, tf.float32)
         y_push_away = tf.cast(y_push_away, tf.float32)
 
-        return tf.reduce_mean(tf.math.log1p(tf.math.exp(y_push_away - y_pull_in)), -1)
+        return tf.reduce_mean(tf.math.log1p(tf.math.exp(self.k * (y_push_away - y_pull_in))), -1)
 
 
 if __name__ == '__main__':
