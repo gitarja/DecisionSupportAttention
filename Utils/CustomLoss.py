@@ -38,10 +38,10 @@ class DoubleTriplet():
 
 class EntropyDoubleAnchor(K.losses.Loss):
 
-    def __init__(self, margin = 1, reduction=tf.keras.losses.Reduction.AUTO, name='EntropyDoubleAnchorLoss'):
+    def __init__(self, margin = 1., soft = False, reduction=tf.keras.losses.Reduction.AUTO, name='EntropyDoubleAnchorLoss'):
         super().__init__(reduction=reduction, name=name)
         self.margin = margin
-
+        self.soft = soft
     def call(self, y_true, y_pred):
         '''
         :param y_true: pull in (d_pos_neg + d_pos_neg_pair)
@@ -54,14 +54,17 @@ class EntropyDoubleAnchor(K.losses.Loss):
         y_pull_in = tf.cast(y_pull_in, tf.float32)
         y_push_away = tf.cast(y_push_away, tf.float32)
 
-        return tf.reduce_mean(tf.math.maximum(y_push_away - y_pull_in + self.margin, 0), -1)
+        if self.soft:
+            return tf.reduce_mean(tf.math.log1p(tf.math.exp(y_push_away - y_pull_in + self.margin), -1))
+        else:
+            return tf.reduce_mean(tf.math.maximum(y_push_away - y_pull_in + self.margin, 0), -1)
 
 
 if __name__ == '__main__':
     import numpy as np
-    zeros = np.zeros((10, 1 ))
-    ones = np.ones((10, 1))
+    zeros = np.ones((10, 1 )) * -2
+    ones = np.ones((10, 1)) 
 
-    cl = EntropyDoubleAnchor(reduction=tf.keras.losses.Reduction.NONE)
+    cl = EntropyDoubleAnchor(soft=True, reduction=tf.keras.losses.Reduction.NONE)
 
     print(cl(ones, zeros))
