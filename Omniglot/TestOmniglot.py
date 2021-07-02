@@ -10,7 +10,7 @@ import numpy as np
 import random
 
 #checkpoint
-checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\adv\\20210701-172507\\model\\"
+checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\20210701-222437_double\\model\\"
 
 #model
 model = FewShotModel(filters=64, z_dim=64)
@@ -22,7 +22,7 @@ checkpoint.restore(manager.latest_checkpoint)
 
 # dataset
 test_dataset = Dataset(mode="test")
-shots = 5
+shots = 1
 
 
 random.seed(2)
