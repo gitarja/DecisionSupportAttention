@@ -85,7 +85,7 @@ if __name__ == '__main__':
     siamese_optimizer = tf.optimizers.Adam(learning_rate=lr_schedule)
 
     if args.adversarial == True:  # using adversarial as well
-        discriminator_optimizer = tf.optimizers.Adam(lr=lr/3)
+        discriminator_optimizer = tf.optimizers.Adam(lr=lr)
         generator_optimizer = tf.optimizers.Adam(lr=lr)
 
     model = FewShotModel(filters=64, z_dim=z_dim)
@@ -117,6 +117,7 @@ if __name__ == '__main__':
             with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
                 train_logits = model(images, training=True)
                 embd_loss = triplet_loss(labels, train_logits)  # triplet loss
+                print(embd_loss)
                 train_loss.append(embd_loss)
                 if args.adversarial == True:  # using adversarial as well
                     # generative

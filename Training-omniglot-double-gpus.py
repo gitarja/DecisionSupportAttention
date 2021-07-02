@@ -2,16 +2,14 @@ import tensorflow as tf
 
 tf.keras.backend.set_floatx('float32')
 from Omniglot.DataGenerator import Dataset
-from NNModels.FewShotModel import FewShotModel
-from NNModels.AdversarialModel import DiscriminatorModel
+from NNModels.FewShotModel import FewShotModel, DeepMetric
 import tensorflow_addons as tfa
-from Utils.PriorFactory import GaussianMixture, Gaussian, GaussianMultivariate
 from Utils.Libs import euclidianMetric, computeACC, cosineSimilarity
 import numpy as np
 import datetime
 from Omniglot.Conf import TENSOR_BOARD_PATH
 import argparse
-from Utils.CustomLoss import DoubleTriplet
+from Utils.CustomLoss import DoubleTriplet, EntropyDoubleAnchor
 import random
 import os
 
@@ -20,8 +18,7 @@ os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--adversarial', type=bool, default=False)
-    parser.add_argument('--double_trip', type=bool, default=False)
+    parser.add_argument('--deep_metric', type=bool, default=False)
 
     args = parser.parse_args()
 
@@ -70,9 +67,9 @@ if __name__ == '__main__':
     # tensor board
     log_dir = TENSOR_BOARD_PATH + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double"
     checkpoint_path = TENSOR_BOARD_PATH + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double" + "\\model"
-    if args.adversarial == True:
-        log_dir = TENSOR_BOARD_PATH + "adv\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double"
-        checkpoint_path = TENSOR_BOARD_PATH + "adv\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double" + "\\model"
+    if args.deep_metric == True:
+        log_dir = TENSOR_BOARD_PATH + "deep_metric\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double"
+        checkpoint_path = TENSOR_BOARD_PATH + "deep_metric\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double" + "\\model"
     train_log_dir = log_dir + "\\train"
     test_log_dir = log_dir + "\\test"
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
@@ -80,11 +77,13 @@ if __name__ == '__main__':
 
     # loss
     triplet_loss = DoubleTriplet()
-    binary_loss = tf.losses.BinaryCrossentropy(from_logits=True, reduction=tf.keras.losses.Reduction.NONE)
+    triplet_loss_soft = EntropyDoubleAnchor(reduction=tf.keras.losses.Reduction.NONE)
 
     with strategy.scope():
         model = FewShotModel(filters=64, z_dim=z_dim)
-        disc_model = DiscriminatorModel(n_hidden=z_dim, n_output=1, dropout_rate=0.1)
+
+        if args.deep_metric == True:
+            deep_metric = DeepMetric(filters=64)
         # check point
         checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
         manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=3)
@@ -97,9 +96,6 @@ if __name__ == '__main__':
             staircase=True)
         siamese_optimizer = tf.optimizers.Adam(learning_rate=lr_schedule)
 
-        if args.adversarial == True:  # using adversarial as well
-            discriminator_optimizer = tf.optimizers.Adam(lr=lr/3)
-            generator_optimizer = tf.optimizers.Adam(lr=lr/3)
 
         #metrics
         # train
@@ -114,42 +110,34 @@ if __name__ == '__main__':
             per_example_loss = triplet_loss(ap, pp, an, pn)
             return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
 
-        def compute_binary_loss(labels, predictions, global_batch_size):
-            per_example_loss = binary_loss(labels, predictions)
+        def compute_entropy_triplet_loss(y_true, y_pred, global_batch_size):
+            per_example_loss = triplet_loss_soft(y_true, y_pred)
             return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
 
     with strategy.scope():
         def train_step(inputs, GLOBAL_BATCH_SIZE=0):
             ap, pp, an, pn = inputs
 
-            samples = GaussianMultivariate(len(ap) * 4, z_dim, mean=0, var=1.)
 
             with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
                 ap_logits = model(ap, training=True)
                 pp_logits = model(pp, training=True)
                 an_logits = model(an, training=True)
                 pn_logits = model(pn, training=True)
-                embd_loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits, GLOBAL_BATCH_SIZE)  # triplet loss
+                if args.deep_metric == False:
+                    embd_loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits, GLOBAL_BATCH_SIZE)  # triplet loss
+                if args.deep_metric == True:
+                    ap_pp_dist = deep_metric([ap_logits, pp_logits])
+                    ap_pn_dist = deep_metric([ap_logits, pn_logits])
+                    ap_an_dist = deep_metric([ap_logits, an_logits])
+                    pp_pn_dist = deep_metric([pp_logits, pn_logits])
 
-                if args.adversarial == True:  # using adversarial as well
-                    # generative
-                    z_fake = disc_model(tf.concat([ap_logits, pp_logits, an_logits, pn_logits], 0), training=True)
-                    z_true = disc_model(samples, training=True)
-
-                    # discriminator loss
-                    D_loss_fake = compute_binary_loss(z_fake, tf.zeros_like(z_fake), GLOBAL_BATCH_SIZE)
-                    D_loss_real = compute_binary_loss(z_true, tf.ones_like(z_true), GLOBAL_BATCH_SIZE)
-                    D_loss = D_loss_real + D_loss_fake
-
-                    # generator loss
-                    G_loss = compute_binary_loss(z_fake, tf.ones_like(z_fake), GLOBAL_BATCH_SIZE)
+                    embd_loss = compute_entropy_triplet_loss(ap_pp_dist+ap_an_dist, ap_pn_dist+pp_pn_dist,
+                                                     GLOBAL_BATCH_SIZE)  # triplet loss
 
 
-            if args.adversarial == True:  # using adversarial as well
-                discriminator_grads = discriminator_tape.gradient(D_loss, disc_model.trainable_weights)
-                generator_grads = generator_tape.gradient(G_loss, model.trainable_weights)
-                discriminator_optimizer.apply_gradients(zip(discriminator_grads, disc_model.trainable_weights))
-                generator_optimizer.apply_gradients(zip(generator_grads, model.trainable_weights))
+
+
             # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
             siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
@@ -165,7 +153,17 @@ if __name__ == '__main__':
             pp_logits = model(pp, training=False)
             an_logits = model(an, training=False)
             pn_logits = model(pn, training=False)
-            loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits, GLOBAL_BATCH_SIZE)
+            if args.deep_metric == False:
+                loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits,
+                                                 GLOBAL_BATCH_SIZE)  # triplet loss
+            if args.deep_metric == True:
+                ap_pp_dist = deep_metric([ap_logits, pp_logits])
+                ap_pn_dist = deep_metric([ap_logits, pn_logits])
+                ap_an_dist = deep_metric([ap_logits, an_logits])
+                pp_pn_dist = deep_metric([pp_logits, pn_logits])
+
+                loss = compute_entropy_triplet_loss(ap_pp_dist + ap_an_dist, ap_pn_dist + pp_pn_dist,
+                                                         GLOBAL_BATCH_SIZE)  # trip
             loss_test(loss)
             return loss
 

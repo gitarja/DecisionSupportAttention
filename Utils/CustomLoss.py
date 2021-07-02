@@ -1,4 +1,5 @@
 import tensorflow as tf
+import tensorflow.keras as K
 from tensorflow.python.framework import ops
 
 class DoubleTriplet():
@@ -35,11 +36,31 @@ class DoubleTriplet():
 
         return triplet_loss
 
+class EntropyDoubleAnchor(K.losses.Loss):
+
+    def __init__(self, reduction=tf.keras.losses.Reduction.AUTO, name='EntropyDoubleAnchorLoss'):
+        super().__init__(reduction=reduction, name=name)
+
+    def call(self, y_true, y_pred):
+        '''
+        :param y_true: pull in (d_pos_neg + d_pos_neg_pair)
+        :param y_pred: (d_neg + d_pos)
+        :return:
+        '''
+        y_pull_in = ops.convert_to_tensor_v2(y_true, name="y_pull_in")
+        y_push_away = ops.convert_to_tensor_v2(y_pred, name="y_push_away")
+
+        y_pull_in = tf.cast(y_pull_in, tf.float32)
+        y_push_away = tf.cast(y_push_away, tf.float32)
+
+        return tf.reduce_mean(tf.math.log1p(tf.math.exp(y_push_away - y_pull_in)), -1)
+
 
 if __name__ == '__main__':
     import numpy as np
-    X = tf.Variable(np.random.normal(size=(25, 64)), dtype=tf.float32)
-    labels = tf.Variable(np.random.randint(1, 5, size=(25, )), dtype=tf.float32)
-    cl = DoubleTriplet(soft=True)
-    loss = cl(X, X, X, X)
-    print(loss)
+    zeros = np.zeros((10, 1 ))
+    ones = np.ones((10, 1))
+
+    cl = EntropyDoubleAnchor(reduction=tf.keras.losses.Reduction.NONE)
+
+    print(cl(ones, zeros))

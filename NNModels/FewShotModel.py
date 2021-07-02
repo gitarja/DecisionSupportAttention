@@ -40,3 +40,29 @@ class FewShotModel(K.models.Model):
         z = self.dense(self.flat(z))
         z = self.normalize(z)
         return z
+
+
+class DeepMetric(K.models.Model):
+
+    def __init__(self, filters=128, dropout_rate=0.3, output=1):
+        super(DeepMetric, self).__init__()
+
+        self.dense_1 = K.layers.Dense(filters, activation="elu", name="dense_1")
+        self.dense_logit = K.layers.Dense(output, activation="sigmoid")
+
+        self.dropout = K.layers.Dropout(dropout_rate)
+
+
+
+    def call(self, inputs, training=None, mask=None):
+        '''
+        :param inputs:
+        :param training:
+        :param mask:
+        :return:
+        '''
+        X = tf.abs(inputs[0] - inputs[1])
+        z = self.dropout(self.dense_1(X))
+        z = self.dense_logit(z)
+
+        return z
