@@ -55,7 +55,7 @@ class EntropyDoubleAnchor(K.losses.Loss):
         y_push_away = tf.cast(y_push_away, tf.float32)
 
         if self.soft:
-            return tf.reduce_mean(tf.math.log1p(tf.math.exp(y_push_away - y_pull_in + self.margin), -1))
+            return tf.reduce_mean(tf.math.log1p(tf.math.exp(y_push_away - y_pull_in + self.margin)), -1)
         else:
             return tf.reduce_mean(tf.math.maximum(y_push_away - y_pull_in + self.margin, 0), -1)
 

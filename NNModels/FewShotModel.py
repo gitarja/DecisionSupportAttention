@@ -48,7 +48,7 @@ class DeepMetric(K.models.Model):
         super(DeepMetric, self).__init__()
 
         self.dense_1 = K.layers.Dense(filters, activation="elu", name="dense_1")
-        self.dense_logit = K.layers.Dense(output, activation="sigmoid")
+        self.dense_logit = K.layers.Dense(output, activation=None)
 
         self.dropout = K.layers.Dropout(dropout_rate)
 
@@ -62,7 +62,7 @@ class DeepMetric(K.models.Model):
         :return:
         '''
         X = tf.abs(inputs[0] - inputs[1])
-        z = self.dropout(self.dense_1(X))
+        z = self.dropout(self.dense_1(X), training=training)
         z = self.dense_logit(z)
 
         return z

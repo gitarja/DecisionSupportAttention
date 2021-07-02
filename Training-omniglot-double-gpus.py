@@ -77,15 +77,17 @@ if __name__ == '__main__':
 
     # loss
     triplet_loss = DoubleTriplet()
-    triplet_loss_soft = EntropyDoubleAnchor(reduction=tf.keras.losses.Reduction.NONE)
+    triplet_loss_soft = EntropyDoubleAnchor(soft=True, reduction=tf.keras.losses.Reduction.NONE)
 
     with strategy.scope():
         model = FewShotModel(filters=64, z_dim=z_dim)
-
-        if args.deep_metric == True:
-            deep_metric = DeepMetric(filters=64)
         # check point
         checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
+        if args.deep_metric == True:
+            deep_metric = DeepMetric(filters=64)
+            # check point
+            checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model, deep_metric=deep_metric)
+
         manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=3)
 
         # optimizer
@@ -119,7 +121,7 @@ if __name__ == '__main__':
             ap, pp, an, pn = inputs
 
 
-            with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
+            with tf.GradientTape() as siamese_tape, tf.GradientTape():
                 ap_logits = model(ap, training=True)
                 pp_logits = model(pp, training=True)
                 an_logits = model(an, training=True)
@@ -127,12 +129,12 @@ if __name__ == '__main__':
                 if args.deep_metric == False:
                     embd_loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits, GLOBAL_BATCH_SIZE)  # triplet loss
                 if args.deep_metric == True:
-                    ap_pp_dist = deep_metric([ap_logits, pp_logits])
-                    ap_pn_dist = deep_metric([ap_logits, pn_logits])
-                    ap_an_dist = deep_metric([ap_logits, an_logits])
-                    pp_pn_dist = deep_metric([pp_logits, pn_logits])
+                    ap_pp_dist = deep_metric([ap_logits, pp_logits], training=True)
+                    ap_an_dist = deep_metric([ap_logits, an_logits], training=True)
+                    an_pn_dist = deep_metric([an_logits, pn_logits], training=True)
+                    pp_pn_dist = deep_metric([pp_logits, pn_logits], training=True)
 
-                    embd_loss = compute_entropy_triplet_loss(ap_pp_dist+ap_an_dist, ap_pn_dist+pp_pn_dist,
+                    embd_loss = compute_entropy_triplet_loss(ap_pp_dist+an_pn_dist, ap_an_dist+pp_pn_dist,
                                                      GLOBAL_BATCH_SIZE)  # triplet loss
 
 
@@ -157,13 +159,13 @@ if __name__ == '__main__':
                 loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits,
                                                  GLOBAL_BATCH_SIZE)  # triplet loss
             if args.deep_metric == True:
-                ap_pp_dist = deep_metric([ap_logits, pp_logits])
-                ap_pn_dist = deep_metric([ap_logits, pn_logits])
-                ap_an_dist = deep_metric([ap_logits, an_logits])
-                pp_pn_dist = deep_metric([pp_logits, pn_logits])
+                ap_pp_dist = deep_metric([ap_logits, pp_logits], training=False)
+                ap_an_dist = deep_metric([ap_logits, an_logits], training=False)
+                an_pn_dist = deep_metric([an_logits, pn_logits], training=False)
+                pp_pn_dist = deep_metric([pp_logits, pn_logits], training=False)
 
-                loss = compute_entropy_triplet_loss(ap_pp_dist + ap_an_dist, ap_pn_dist + pp_pn_dist,
-                                                         GLOBAL_BATCH_SIZE)  # trip
+                loss = compute_entropy_triplet_loss(ap_pp_dist + an_pn_dist, ap_an_dist + pp_pn_dist,
+                                                         GLOBAL_BATCH_SIZE)  # triplet loss
             loss_test(loss)
             return loss
 
