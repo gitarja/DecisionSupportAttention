@@ -109,7 +109,13 @@ if __name__ == '__main__':
 
 
     with strategy.scope():
+        def make_pair_hards(x, p):
+            w = tf.matmul(x, tf.linalg.pinv(p))
+            x_p = tf.matmul(w, x)
+
+            return x_p
         def compute_triplet_loss(ap, pp, an, pn, global_batch_size):
+
             per_example_loss = triplet_loss(ap, pp, an, pn)
             return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
 
@@ -128,7 +134,14 @@ if __name__ == '__main__':
                 an_logits = model(an, training=True)
                 pn_logits = model(pn, training=True)
 
-                embd_loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits, GLOBAL_BATCH_SIZE)  # triplet loss
+                # negative
+                ap_an = make_pair_hards(ap, an)
+                pp_pn = make_pair_hards(pp, pn)
+                # positive
+                pn_pp = make_pair_hards(pp, pn)
+                an_ap = make_pair_hards(an, ap)
+
+                embd_loss = compute_triplet_loss(pn_pp, an_ap, ap_an, pp_pn, GLOBAL_BATCH_SIZE)  # triplet loss
                 if args.adversarial == True:  # using adversarial as well
                     # generative
 
