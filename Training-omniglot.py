@@ -117,7 +117,7 @@ if __name__ == '__main__':
             with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
                 train_logits = model(images, training=True)
                 embd_loss = triplet_loss(labels, train_logits)  # triplet loss
-                print(embd_loss)
+
                 train_loss.append(embd_loss)
                 if args.adversarial == True:  # using adversarial as well
                     # generative
@@ -126,12 +126,12 @@ if __name__ == '__main__':
                     z_true = disc_model(samples, training=True)
 
                     # discriminator loss
-                    D_loss_fake = binary_loss(z_fake, tf.zeros_like(z_fake))
-                    D_loss_real = binary_loss(z_true, tf.ones_like(z_true))
+                    D_loss_fake = binary_loss(tf.zeros_like(z_fake), z_fake)
+                    D_loss_real = binary_loss(tf.ones_like(z_true), z_true)
                     D_loss = D_loss_real + D_loss_fake
 
                     # generator loss
-                    G_loss = binary_loss(z_fake, tf.ones_like(z_fake))
+                    G_loss = binary_loss(tf.ones_like(z_fake), z_fake)
 
             if args.adversarial == True:  # using adversarial as well
                 discriminator_grads = discriminator_tape.gradient(D_loss, disc_model.trainable_weights)
@@ -147,7 +147,7 @@ if __name__ == '__main__':
 
         if (ep + 1) % eval_interval == 0:
             val_loss = []
-            manager.save()
+
             for test_images, test_labels in val_dataset:
                 logits = model(test_images, training=False)
                 loss = triplet_loss(test_labels, logits)
@@ -161,12 +161,12 @@ if __name__ == '__main__':
                 tf.reduce_mean(train_loss), val_loss))  # print train and val losses.
 
 
-            # if (val_loss_th > val_loss):
-            #     val_loss_th = val_loss
-            #
-            #     early_idx = 0
-            # else:
-            #     early_idx += 1
+            if (val_loss_th > val_loss):
+                val_loss_th = val_loss
+                manager.save()
+                early_idx = 0
+            else:
+                early_idx += 1
             # if early_idx == early_th:
             #     break
 

@@ -27,10 +27,12 @@ class DoubleTriplet():
         d_pos_neg = tf.reduce_sum(tf.square(ap - an), 1) #distance between positive and negative anchor
         d_pos_neg_pair = tf.reduce_sum(tf.square(ap - an), 1) #distance between positive and negative anchor
 
+        pull_in = d_neg + d_pos
+        push_away = d_pos_neg + d_pos_neg_pair
         if self.soft:
             triplet_loss = tf.math.log1p(tf.math.exp((d_neg + d_pos) - (d_pos_neg + d_pos_neg_pair)))
         else:
-            triplet_loss = tf.maximum(0.0, (self.margin + d_neg + d_pos) - (d_pos_neg + d_pos_neg_pair))
+            triplet_loss = tf.maximum(0.0, (self.margin + pull_in) - (push_away))
         # Get final mean triplet loss
         # triplet_loss = tf.reduce_mean(triplet_loss, axis=-1)
 
@@ -55,16 +57,17 @@ class EntropyDoubleAnchor(K.losses.Loss):
         y_push_away = tf.cast(y_push_away, tf.float32)
 
         if self.soft:
-            return tf.reduce_mean(tf.math.log1p(tf.math.exp(y_push_away - y_pull_in + self.margin)), -1)
+            return tf.reduce_mean(tf.math.log1p(tf.math.exp( self.margin + y_push_away - y_pull_in)), -1)
         else:
-            return tf.reduce_mean(tf.math.maximum(y_push_away - y_pull_in + self.margin, 0), -1)
+            return tf.reduce_mean(tf.math.maximum(self.margin + y_pull_in - y_push_away, 0), -1)
 
 
 if __name__ == '__main__':
     import numpy as np
-    zeros = np.ones((10, 1 )) * -2
-    ones = np.ones((10, 1)) 
+    zeros = np.ones((10, 1 )) * -1
+    ones = np.ones((10, 1)) * -1
 
-    cl = EntropyDoubleAnchor(soft=True, reduction=tf.keras.losses.Reduction.NONE)
+    # cl = EntropyDoubleAnchor(soft=True, margin=1., reduction=tf.keras.losses.Reduction.NONE)
+    cl = DoubleTriplet()
 
-    print(cl(ones, zeros))
+    print(cl(ones, zeros,ones, zeros ))

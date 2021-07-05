@@ -15,18 +15,19 @@ def knn_class(q_logits, labels, ref_logits, ref_labels):
     return acc
 
 def metric_class(q_logits, labels, ref_logits, ref_labels, deep_metric):
-    q_logits = tf.tile(q_logits, (len(ref_logits), 1))
+
     pred_labels = np.zeros_like(labels)
     for i in range(len(q_logits)):
-        logits = tf.sigmoid(deep_metric([q_logits[i], ref_logits]))
-        pred_labels[i] = ref_labels[tf.argmax(logits)]
+        query = tf.tile(tf.expand_dims(q_logits[i],0), (len(ref_logits), 1))
+        logits = deep_metric([query, ref_logits])
+        pred_labels[i] = ref_labels[tf.argmax(logits).numpy()]
 
     return np.average(labels==pred_labels)
 
 
 
 #checkpoint
-checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\20210701-222437_double\\model\\"
+checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\20210704-152534_double\\model\\"
 metric = False
 #model
 model = FewShotModel(filters=64, z_dim=64)
@@ -42,7 +43,7 @@ checkpoint.restore(manager.latest_checkpoint)
 
 # dataset
 test_dataset = Dataset(mode="test")
-shots = 1
+shots = 5
 
 
 random.seed(2)
@@ -55,9 +56,10 @@ for way in [5, 20, 50, 100]:
         ref_logits = model(references, training=False)
 
         if metric:
-            acc = knn_class(q_logits, labels, ref_logits, ref_labels)
-        else:
             acc = metric_class(q_logits, labels, ref_logits, ref_labels, deep_metric)
+        else:
+
+            acc = knn_class(q_logits, labels, ref_logits, ref_labels)
 
             # dist = cosineSimilarity(val_logits, ref_logits, ref_num=5)
             # acc = computeACC(dist, labels)
