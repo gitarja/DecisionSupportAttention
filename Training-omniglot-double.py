@@ -38,7 +38,7 @@ if __name__ == '__main__':
     train_dataset = Dataset(mode="train_val", val_frac=0.1)
 
     # training setting
-    eval_interval = 100
+    eval_interval = 25
     inner_batch_size = 25
     train_buffer = 100
     val_buffer = 100
@@ -111,8 +111,9 @@ if __name__ == '__main__':
                                                               )
 
         for ap, pp, an, pn in mini_dataset:
-            # sample from gaussian mixture
-            samples = tf.math.l2_normalize(GaussianMultivariate(len(ap) * 4, z_dim, mean=0, var=1.), -1)
+            if args.adversarial == True:  # using adversarial as well
+                # sample from gaussian mixture
+                samples = tf.math.l2_normalize(GaussianMultivariate(len(ap) * 4, z_dim, mean=0, var=1.), -1)
 
             with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
                 ap_logits = model(ap, training=True)
@@ -163,12 +164,12 @@ if __name__ == '__main__':
                 tf.summary.scalar('loss', val_loss, step=epoch)
             print("Training loss=%f, validation loss=%f" % (
                 tf.reduce_mean(train_loss), val_loss))  # print train and val losses
-            #
-            # if (val_loss_th > val_loss):
-            #     val_loss_th = val_loss
-            #
-            #     early_idx = 0
-            # else:
-            #     early_idx += 1
-            # if early_idx == early_th:
-            #     break
+
+            if (val_loss_th > val_loss):
+                val_loss_th = val_loss
+
+                early_idx = 0
+            else:
+                early_idx += 1
+            if early_idx == early_th:
+                break

@@ -26,7 +26,7 @@ class FewShotModel(K.models.Model):
         self.conv_3 = ConvBlock(filters=filters)
         self.conv_4 = ConvBlock(filters=filters)
         self.dense = K.layers.Dense(z_dim, activation=None)
-        self.normalize = tf.keras.layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=-1))
+        self.normalize = tf.keras.layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=1))
         self.flat = K.layers.Flatten()
 
 

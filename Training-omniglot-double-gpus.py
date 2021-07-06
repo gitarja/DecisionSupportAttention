@@ -44,8 +44,8 @@ if __name__ == '__main__':
     train_dataset = Dataset(mode="train_val", val_frac=0.1)
 
     # training setting
-    eval_interval = 50
-    inner_batch_size = 100
+    eval_interval = 25
+    inner_batch_size = 125
     ALL_BATCH_SIZE = inner_batch_size * strategy.num_replicas_in_sync
     train_buffer = ALL_BATCH_SIZE * 4
     val_buffer = 100
@@ -59,7 +59,7 @@ if __name__ == '__main__':
     lr_siamese = 1e-3
 
     # early stopping
-    early_th = 10
+    early_th = 5
     early_idx = 0
 
     # siamese and discriminator hyperparameter values
@@ -124,49 +124,23 @@ if __name__ == '__main__':
             return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
 
     with strategy.scope():
+
+
         def train_step(inputs, GLOBAL_BATCH_SIZE=0):
             ap, pp, an, pn = inputs
 
-            samples = Gaussian(len(ap) * 4, z_dim, mean=0, var=1.)
-            with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
+            with tf.GradientTape() as siamese_tape, tf.GradientTape():
                 ap_logits = model(ap, training=True)
                 pp_logits = model(pp, training=True)
                 an_logits = model(an, training=True)
                 pn_logits = model(pn, training=True)
 
-                # negative
-                ap_an = make_pair_hards(ap, an)
-                pp_pn = make_pair_hards(pp, pn)
-                # positive
-                pn_pp = make_pair_hards(pp, pn)
-                an_ap = make_pair_hards(an, ap)
 
-                embd_loss = compute_triplet_loss(pn_pp, an_ap, ap_an, pp_pn, GLOBAL_BATCH_SIZE)  # triplet loss
-                if args.adversarial == True:  # using adversarial as well
-                    # generative
-
-                    z_fake = disc_model(tf.concat([ap_logits, pp_logits, an_logits, pn_logits], 0), training=True)
-                    z_true = disc_model(samples, training=True)
-
-                    # discriminator loss
-                    D_loss_fake = binary_loss(tf.zeros_like(z_fake), z_fake)
-                    D_loss_real = binary_loss(tf.ones_like(z_true), z_true)
-                    D_loss = D_loss_real + D_loss_fake
-
-                    # generator loss
-                    G_loss = binary_loss(tf.ones_like(z_fake), z_fake)
-
+                embd_loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits, GLOBAL_BATCH_SIZE)  # triplet loss
             # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
             siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
             siamese_optimizer.apply_gradients(zip(siamese_grads, model.trainable_weights))
-            if args.adversarial == True:  # using adversarial as well
-                discriminator_grads = discriminator_tape.gradient(D_loss, disc_model.trainable_weights)
-                generator_grads = generator_tape.gradient(G_loss, model.trainable_weights)
-                discriminator_optimizer.apply_gradients(zip(discriminator_grads, disc_model.trainable_weights))
-                generator_optimizer.apply_gradients(zip(generator_grads, model.trainable_weights))
-
-
             loss_train(embd_loss)
             return embd_loss
 
@@ -199,6 +173,8 @@ if __name__ == '__main__':
                                    axis=None)
 
 
+
+
         @tf.function
         def distributed_test_step(dataset_inputs, GLOBAL_BATCH_SIZE):
             return strategy.run(val_step, args=(dataset_inputs,GLOBAL_BATCH_SIZE))
@@ -218,7 +194,8 @@ if __name__ == '__main__':
                                                                   )
 
             for ap, pp, an, pn in mini_dataset:
-                distributed_train_step([ap, pp, an, pn], ALL_BATCH_SIZE)
+                if (epoch + 1) <= 500:
+                    distributed_train_step([ap, pp, an, pn], ALL_BATCH_SIZE)
 
             if (epoch + 1) % eval_interval == 0:
 
@@ -232,10 +209,10 @@ if __name__ == '__main__':
                     loss_train.result().numpy(), loss_test.result().numpy()))  # print train and val losses
 
                 val_loss = loss_test.result().numpy()
-
+                manager.save()
                 if (val_loss_th > val_loss):
                     val_loss_th = val_loss
-                    manager.save()
+
                     early_idx = 0
                 else:
                     early_idx += 1
