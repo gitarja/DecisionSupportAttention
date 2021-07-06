@@ -50,6 +50,11 @@ class Dataset:
             self.val_labels = self.labels[:int(len(self.labels) *val_frac)] #take 20% classes as validation
             del self.labels[:int(len(self.labels) *val_frac)]
 
+        self.data_aug = tf.keras.Sequential([
+          K.layers.experimental.preprocessing.RandomFlip("horizontal"),
+          K.layers.experimental.preprocessing.RandomContrast(0.4)
+        ])
+
 
 
     def get_mini_offline_batches(self, n_buffer, batch_size, shots=2,  validation=False):
@@ -74,11 +79,11 @@ class Dataset:
             #set anchor and pair positives
 
             anchor_positive[i*half_shot:(i+1) * half_shot] = positive_to_split[:half_shot]
-            pair_positive[i*half_shot:(i+1) * half_shot] = positive_to_split[half_shot:]
+            pair_positive[i*half_shot:(i+1) * half_shot] = self.data_aug(positive_to_split[half_shot:])
 
             # set anchor and pair negatives
             anchor_negative[i*half_shot:(i+1) * half_shot] = negative_to_split[:half_shot]
-            pair_negative[i*half_shot:(i+1) * half_shot] = negative_to_split[half_shot:]
+            pair_negative[i*half_shot:(i+1) * half_shot] = self.data_aug(negative_to_split[half_shot:])
 
 
         dataset = tf.data.Dataset.from_tensor_slices(
