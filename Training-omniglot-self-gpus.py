@@ -16,6 +16,12 @@ os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
 
 if __name__ == '__main__':
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--negative', type=bool, default=False)
+
+    args = parser.parse_args()
+
+
     # set up GPUs
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
@@ -52,7 +58,7 @@ if __name__ == '__main__':
     lr_siamese = 1e-3
 
     # early stopping
-    early_th = 10
+    early_th = 5
     early_idx = 0
 
     # siamese and discriminator hyperparameter values
@@ -62,6 +68,9 @@ if __name__ == '__main__':
 
     log_dir = TENSOR_BOARD_PATH + "barlow\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     checkpoint_path = TENSOR_BOARD_PATH + "barlow\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "\\model"
+    if args.negative == True:
+        log_dir = TENSOR_BOARD_PATH + "barlow_negative\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        checkpoint_path = TENSOR_BOARD_PATH + "barlow_negative\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "\\model"
     train_log_dir = log_dir + "\\train"
     test_log_dir = log_dir + "\\test"
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
@@ -121,11 +130,12 @@ if __name__ == '__main__':
             with tf.GradientTape() as siamese_tape, tf.GradientTape():
                 ap_logits = model(anchor, training=True)
                 pp_logits = model(positives, training=True)
-                # nn_logits = model(negatives, training=True)
+                if args.negative == True:
+                    nn_logits = model(negatives, training=True)
+                    embd_loss = compute_baron_loss_pos(ap_logits, pp_logits) + compute_baron_loss_pos(ap_logits, nn_logits)
+                else:
+                    embd_loss = compute_baron_loss_pos(ap_logits, pp_logits)
 
-
-
-                embd_loss = compute_baron_loss_pos(ap_logits, pp_logits)
             # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
             siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
@@ -193,12 +203,11 @@ if __name__ == '__main__':
                     tf.summary.scalar('loss', loss_test.result().numpy(), step=epoch)
                 print("Training loss=%f, validation loss=%f" % (
                     loss_train.result().numpy(), loss_test.result().numpy()))  # print train and val losses
-
                 val_loss = loss_test.result().numpy()
-
+                manager.save()
                 if (val_loss_th > val_loss):
                     val_loss_th = val_loss
-                    manager.save()
+
                     early_idx = 0
                 else:
                     early_idx += 1

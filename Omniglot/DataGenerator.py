@@ -83,9 +83,9 @@ class Dataset:
             anchor_positive[i*half_shot:(i+1) * half_shot] = positive_to_split[:half_shot]
             if validation == False:
                 # set anchor and pair positives
-                pair_positive[i*half_shot:(i+1) * half_shot] = self.data_aug(positive_to_split[half_shot:])
+                pair_positive[i*half_shot:(i+1) * half_shot] = positive_to_split[half_shot:]
                 # set anchor and pair negatives
-                pair_negative[i * half_shot:(i + 1) * half_shot] = self.data_aug(negative_to_split[half_shot:])
+                pair_negative[i * half_shot:(i + 1) * half_shot] = negative_to_split[half_shot:]
             else:
                 # set anchor and pair positives
                 pair_positive[i * half_shot:(i + 1) * half_shot] = positive_to_split[half_shot:]

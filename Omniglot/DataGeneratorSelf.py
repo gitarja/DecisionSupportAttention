@@ -52,7 +52,7 @@ class Dataset:
             del self.labels[:int(len(self.labels) * val_frac)]
 
     def data_aug_pos(self, x):
-        deg = np.random.uniform(0.05, .7, 1)
+        deg = np.random.uniform(0.05, .3, 1)
         x = tfa.image.rotate(x, deg, fill_mode="nearest")
         x = tf.image.random_crop(x, (len(x), 28, 28, 1))
 
