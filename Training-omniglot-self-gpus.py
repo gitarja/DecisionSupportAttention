@@ -37,11 +37,11 @@ if __name__ == '__main__':
     train_dataset = Dataset(mode="train_val", val_frac=0.1)
 
     # training setting
-    eval_interval = 15
-    inner_batch_size = 125
-    ALL_BATCH_SIZE = inner_batch_size * strategy.num_replicas_in_sync
-    train_buffer = ALL_BATCH_SIZE * 4
-    val_buffer = 100
+    eval_interval = 25
+    n_class = 512
+    batch_size = 128
+    ALL_BATCH_SIZE = n_class * strategy.num_replicas_in_sync
+    val_class = 100
     ref_num = 5
     val_loss_th = 1e+3
     shots=20
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     lr_siamese = 1e-3
 
     # early stopping
-    early_th = 5
+    early_th = 10
     early_idx = 0
 
     # siamese and discriminator hyperparameter values
@@ -68,7 +68,8 @@ if __name__ == '__main__':
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    triplet_loss = TripletBarlow(positive=True, reduction=tf.keras.losses.Reduction.SUM, alpha=0.3)
+    barlow_loss_pos = TripletBarlow(positive=True, reduction=tf.keras.losses.Reduction.SUM, alpha=5e-3)
+    barlow_loss_neg = TripletBarlow(positive=False, reduction=tf.keras.losses.Reduction.SUM, alpha=5e-3)
 
     with strategy.scope():
         model = FewShotModel(filters=64, z_dim=z_dim)
@@ -81,7 +82,7 @@ if __name__ == '__main__':
         # optimizer
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             lr,
-            decay_steps=1000,
+            decay_steps=3000,
             decay_rate=0.96,
             staircase=True)
         siamese_optimizer = tfa.optimizers.LAMB(learning_rate=lr_schedule)
@@ -101,9 +102,13 @@ if __name__ == '__main__':
             x_p = tf.matmul(w, x)
 
             return x_p
-        def compute_triplet_loss(a, p, global_batch_size):
+        def compute_baron_loss_pos(a, p):
+            per_example_loss = barlow_loss_pos(a, p)
+            return per_example_loss
 
-            per_example_loss = triplet_loss(a, p)
+
+        def compute_baron_loss_neg(a, n):
+            per_example_loss = barlow_loss_neg(a, n)
             return per_example_loss
 
 
@@ -111,15 +116,16 @@ if __name__ == '__main__':
 
 
         def train_step(inputs, GLOBAL_BATCH_SIZE=0):
-            anchor, positives = inputs
+            anchor, positives, negatives = inputs
 
             with tf.GradientTape() as siamese_tape, tf.GradientTape():
                 ap_logits = model(anchor, training=True)
                 pp_logits = model(positives, training=True)
+                # nn_logits = model(negatives, training=True)
 
 
 
-                embd_loss = compute_triplet_loss(ap_logits, pp_logits, GLOBAL_BATCH_SIZE)  # triplet loss
+                embd_loss = compute_baron_loss_pos(ap_logits, pp_logits)
             # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
             siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
@@ -134,8 +140,7 @@ if __name__ == '__main__':
             pp_logits = model(positives, training=False)
 
 
-            loss = compute_triplet_loss(ap_logits, pp_logits,
-                                                 GLOBAL_BATCH_SIZE)  # triplet loss
+            loss = compute_baron_loss_pos(ap_logits, pp_logits )  # triplet loss
 
             loss_test(loss)
             return loss
@@ -163,20 +168,20 @@ if __name__ == '__main__':
 
 
         # validation dataset
-        val_dataset = train_dataset.get_mini_self_batches(val_buffer,
-                                                             inner_batch_size, shots=shots,
+        val_dataset = train_dataset.get_mini_self_batches(val_class,
+                                                             batch_size, shots=shots,
                                                              validation=True,
                                                              )
 
         for epoch in range(episodes):
             # dataset
-            mini_dataset = train_dataset.get_mini_self_batches(train_buffer,
-                                                                  inner_batch_size,shots=shots,
+            mini_dataset = train_dataset.get_mini_self_batches(n_class,
+                                                                  batch_size,shots=shots,
                                                                   validation=False,
                                                                   )
 
             for a, p, n in mini_dataset:
-                 distributed_train_step([a, p], ALL_BATCH_SIZE)
+                 distributed_train_step([a, p, n], ALL_BATCH_SIZE)
 
             if (epoch + 1) % eval_interval == 0:
 

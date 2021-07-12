@@ -66,11 +66,14 @@ class EntropyDoubleAnchor(K.losses.Loss):
 
 
 class TripletBarlow(K.losses.Loss):
-    def __init__(self, alpha=1., positive=True, reduction=tf.keras.losses.Reduction.AUTO,
+    def __init__(self, alpha=5e-3, positive=True, reduction=tf.keras.losses.Reduction.AUTO,
                  name='TripletBarlow'):
         super().__init__(reduction=reduction, name=name)
         self.alpha = alpha
+
         self.positive = positive
+    def normalize(self, x):
+        return  (x - tf.reduce_mean(x, 0)) / tf.math.reduce_std(x, 0)
 
     def call(self, y_true, y_pred):
         '''
@@ -82,9 +85,9 @@ class TripletBarlow(K.losses.Loss):
         y_pred = ops.convert_to_tensor_v2(y_pred, name="y_pred")
 
         y_true = tf.cast(y_true, tf.float32)
-        y_true_norm = (y_true - tf.reduce_mean(y_true, 0)) / tf.math.reduce_std(y_true, 0)
+        y_true_norm = self.normalize(y_true)
         y_pred = tf.cast(y_pred, tf.float32)
-        y_pred_norm = (y_pred - tf.reduce_mean(y_pred, 0)) / tf.math.reduce_std(y_pred, 0)
+        y_pred_norm = self.normalize(y_pred)
         N, D = y_true_norm.shape
         c = tf.transpose(y_true_norm) @ y_pred_norm
         c = c / N
@@ -92,11 +95,9 @@ class TripletBarlow(K.losses.Loss):
 
         if self.positive:
             c_diff = tf.square(c - I)
-            c_diff = tf.where(I != 1, c_diff * self.alpha, c_diff)
         else:
             c_diff = tf.square(c + I)
-            c_diff = tf.where(I != 1, c_diff * -self.alpha, c_diff)
-
+        c_diff = tf.where(I != 1, c_diff * self.alpha, c_diff)
 
 
         loss = tf.reduce_sum(c_diff)

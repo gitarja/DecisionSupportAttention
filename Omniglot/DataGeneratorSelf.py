@@ -22,18 +22,28 @@ class Dataset:
 
         self.data = {}
 
-        def extraction(image, degree=0):
-            image = tf.image.resize(tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1), [28, 28])
+        def extraction(image, size=(28, 28), degree=0):
+            image = tf.image.resize(tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1),size)
             if degree != 0:
                 image = tf.image.rot90(image, k=degree)
             return image
 
-        for i in range(ds.shape[0]):
-            for l in range(ds[i].shape[0]):
-                label = str(i)
-                if label not in self.data:
-                    self.data[label] = []
-                self.data[label].append(extraction(ds[i, l, :, :]))
+        if mode == "test":
+            for i in range(ds.shape[0]):
+                for l in range(ds[i].shape[0]):
+                    label = str(i)
+                    if label not in self.data:
+                        self.data[label] = []
+                    self.data[label].append(extraction(ds[i, l, :, :]))
+        else:
+            label = 0
+            for i in range(ds.shape[0]):
+                for j in range(4):
+                    for l in range(ds[i].shape[0]):
+                        if label not in self.data:
+                            self.data[label] = []
+                        self.data[label].append(extraction(ds[i, l, :, :], size=(35, 35),degree=j))
+                    label += 1
 
         self.labels = list(self.data.keys())
         if mode == "train_val":
@@ -42,18 +52,17 @@ class Dataset:
             del self.labels[:int(len(self.labels) * val_frac)]
 
     def data_aug_pos(self, x):
-        deg = np.random.uniform(0, 0.7, 1)
+        deg = np.random.uniform(0.05, .7, 1)
         x = tfa.image.rotate(x, deg, fill_mode="nearest")
-        x = tfa.image.random_cutout(x,  (2,2), constant_values = 0, seed=0)
-        x = tf.image.random_brightness(x, 0.1)
+        x = tf.image.random_crop(x, (len(x), 28, 28, 1))
 
         return x
 
     def data_aug_neg(self, x):
         deg = random.randint(1, 4)
+        x = tf.image.random_crop(x, (len(x), 28, 28, 1))
         r = random.randint(0, 1) # whether to apply gaussian filter or not
         x = tf.image.rot90(x, deg)
-        x = tf.image.random_contrast(x, 0.1, 0.7)
         x = tf.image.random_brightness(x, 0.7)
         if r == 1:
             x = tfa.image.gaussian_filter2d(x)
@@ -71,10 +80,10 @@ class Dataset:
             label_subsets = random.choices(labels, k=1)
             # set anchor and pair positives
             img_base = random.choices(
-                self.data[label_subsets[0]], k=1)
-            anchors[i*shots:(i+1) * shots] = self.data_aug_pos([img_base[0] for x in range(shots)])
-            positives[i * shots:(i + 1) * shots] = self.data_aug_pos([img_base[0] for x in range(shots)])
-            negatives[i * shots:(i + 1) * shots] = self.data_aug_neg([img_base[0] for x in range(shots)])
+                self.data[label_subsets[0]], k=shots)
+            anchors[i*shots:(i+1) * shots] = self.data_aug_pos(img_base)
+            positives[i * shots:(i + 1) * shots] = self.data_aug_pos(img_base)
+            negatives[i * shots:(i + 1) * shots] = self.data_aug_neg(img_base)
 
 
         dataset = tf.data.Dataset.from_tensor_slices(
@@ -83,7 +92,7 @@ class Dataset:
         if validation:
             dataset = dataset.batch(batch_size)
         else:
-            dataset = dataset.shuffle(n_buffer).batch(batch_size)
+            dataset = dataset.shuffle(n_buffer * shots).batch(batch_size)
 
         return dataset
 
@@ -129,25 +138,41 @@ class Dataset:
 if __name__ == '__main__':
 
     test_dataset = Dataset(mode="train_val")
-    # test_data = test_dataset.get_mini_self_batches( n_buffer=5, batch_size=5, shots=2,validation=True)
+    test_data = test_dataset.get_mini_self_batches( n_buffer=5, batch_size=5, shots=1,validation=True)
 
     # for _, data in enumerate(test_data):
     #     print(data)
 
-    _, axarr = plt.subplots(nrows=5, ncols=5, figsize=(20, 20))
+    _, axarr = plt.subplots(nrows=5, ncols=3, figsize=(20, 20))
 
     sample_keys = list(test_dataset.data.keys())
 
-    for a in range(5):
-        for b in range(5):
-            temp_image = test_dataset.data[sample_keys[a]][b]
-            temp_image = test_dataset.data_aug_pos(temp_image)
-            temp_image = np.stack((temp_image[:, :, 0],) * 3, axis=2)
+    i = 0
+    for a, p, n in test_data:
+        for j in range(len(a)):
+
+
+            temp_image = np.stack((a[j][:, :, 0],) * 3, axis=2)
             temp_image *= 255
             temp_image = np.clip(temp_image, 0, 255).astype("uint8")
-            if b == 2:
-                axarr[a, b].set_title("Class : " + sample_keys[a])
-            axarr[a, b].imshow(temp_image, cmap="gray")
-            axarr[a, b].xaxis.set_visible(False)
-            axarr[a, b].yaxis.set_visible(False)
-    plt.show()
+            axarr[i, 0].imshow(temp_image, cmap="gray")
+            axarr[i, 0].xaxis.set_visible(False)
+            axarr[i, 0].yaxis.set_visible(False)
+
+
+            temp_image = np.stack((p[j][:, :, 0],) * 3, axis=2)
+            temp_image *= 255
+            temp_image = np.clip(temp_image, 0, 255).astype("uint8")
+            axarr[i, 1].imshow(temp_image, cmap="gray")
+            axarr[i, 1].xaxis.set_visible(False)
+            axarr[i, 1].yaxis.set_visible(False)
+
+            temp_image = np.stack((n[j][:, :, 0],) * 3, axis=2)
+            temp_image *= 255
+            temp_image = np.clip(temp_image, 0, 255).astype("uint8")
+            axarr[i, 2].imshow(temp_image, cmap="gray")
+            axarr[i, 2].xaxis.set_visible(False)
+            axarr[i, 2].yaxis.set_visible(False)
+
+            i+=1
+        plt.show()
