@@ -42,9 +42,11 @@ class Dataset:
             del self.labels[:int(len(self.labels) * val_frac)]
 
     def data_aug_pos(self, x):
-        deg = random.randrange(0, 20)
-        x = tf.image.random_brightness(x, 0.4)
-        x = tfa.image.rotate(x, deg)
+        deg = np.random.uniform(0, 0.7, 1)
+        x = tfa.image.rotate(x, deg, fill_mode="nearest")
+        x = tfa.image.random_cutout(x,  (2,2), constant_values = 0, seed=0)
+        x = tf.image.random_brightness(x, 0.1)
+
         return x
 
     def data_aug_neg(self, x):
@@ -126,8 +128,8 @@ class Dataset:
 
 if __name__ == '__main__':
 
-    test_dataset = Dataset(mode="test")
-    test_data = test_dataset.get_batches(shots=5, num_classes=5)
+    test_dataset = Dataset(mode="train_val")
+    # test_data = test_dataset.get_mini_self_batches( n_buffer=5, batch_size=5, shots=2,validation=True)
 
     # for _, data in enumerate(test_data):
     #     print(data)
@@ -139,6 +141,7 @@ if __name__ == '__main__':
     for a in range(5):
         for b in range(5):
             temp_image = test_dataset.data[sample_keys[a]][b]
+            temp_image = test_dataset.data_aug_pos(temp_image)
             temp_image = np.stack((temp_image[:, :, 0],) * 3, axis=2)
             temp_image *= 255
             temp_image = np.clip(temp_image, 0, 255).astype("uint8")
