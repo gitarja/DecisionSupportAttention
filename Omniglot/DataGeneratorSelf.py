@@ -42,8 +42,9 @@ class Dataset:
             del self.labels[:int(len(self.labels) * val_frac)]
 
     def data_aug_pos(self, x):
-        x = tf.image.random_flip_left_right(x)
-        x = tf.image.random_contrast(x, 0, 0.4)
+        deg = random.randrange(0, 20)
+        x = tf.image.random_brightness(x, 0.4)
+        x = tfa.image.rotate(x, deg)
         return x
 
     def data_aug_neg(self, x):
@@ -69,9 +70,9 @@ class Dataset:
             # set anchor and pair positives
             img_base = random.choices(
                 self.data[label_subsets[0]], k=1)
-            anchors[i*shots:(i+1) * shots] = self.data_aug_pos([img_base for x in shots])
-            positives[i * shots:(i + 1) * shots] = self.data_aug_pos([img_base for x in shots])
-            negatives[i * shots:(i + 1) * shots] = self.data_aug_neg([img_base for x in shots])
+            anchors[i*shots:(i+1) * shots] = self.data_aug_pos([img_base[0] for x in range(shots)])
+            positives[i * shots:(i + 1) * shots] = self.data_aug_pos([img_base[0] for x in range(shots)])
+            negatives[i * shots:(i + 1) * shots] = self.data_aug_neg([img_base[0] for x in range(shots)])
 
 
         dataset = tf.data.Dataset.from_tensor_slices(

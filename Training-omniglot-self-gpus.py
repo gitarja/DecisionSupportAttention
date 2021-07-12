@@ -16,11 +16,6 @@ os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--adversarial', type=bool, default=False)
-
-    args = parser.parse_args()
-
     # set up GPUs
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
@@ -42,7 +37,7 @@ if __name__ == '__main__':
     train_dataset = Dataset(mode="train_val", val_frac=0.1)
 
     # training setting
-    eval_interval = 50
+    eval_interval = 15
     inner_batch_size = 125
     ALL_BATCH_SIZE = inner_batch_size * strategy.num_replicas_in_sync
     train_buffer = ALL_BATCH_SIZE * 4
@@ -65,15 +60,15 @@ if __name__ == '__main__':
 
     # tensor board
 
-    log_dir = TENSOR_BOARD_PATH + "barlow\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double"
-    checkpoint_path = TENSOR_BOARD_PATH + "barlow\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double" + "\\model"
+    log_dir = TENSOR_BOARD_PATH + "barlow\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    checkpoint_path = TENSOR_BOARD_PATH + "barlow\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "\\model"
     train_log_dir = log_dir + "\\train"
     test_log_dir = log_dir + "\\test"
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    triplet_loss = TripletBarlow(positive=True)
+    triplet_loss = TripletBarlow(positive=True, reduction=tf.keras.losses.Reduction.SUM, alpha=0.3)
 
     with strategy.scope():
         model = FewShotModel(filters=64, z_dim=z_dim)
@@ -91,9 +86,6 @@ if __name__ == '__main__':
             staircase=True)
         siamese_optimizer = tfa.optimizers.LAMB(learning_rate=lr_schedule)
 
-        if args.adversarial == True:  # using adversarial as well
-            discriminator_optimizer = tf.optimizers.Adam(lr=lr/3)
-            generator_optimizer = tf.optimizers.Adam(lr=lr)
 
         #metrics
         # train
@@ -112,7 +104,7 @@ if __name__ == '__main__':
         def compute_triplet_loss(a, p, global_batch_size):
 
             per_example_loss = triplet_loss(a, p)
-            return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
+            return per_example_loss
 
 
     with strategy.scope():
@@ -183,13 +175,12 @@ if __name__ == '__main__':
                                                                   validation=False,
                                                                   )
 
-            for a, p in mini_dataset:
-                if (epoch + 1) <= 500:
-                    distributed_train_step([a, p], ALL_BATCH_SIZE)
+            for a, p, n in mini_dataset:
+                 distributed_train_step([a, p], ALL_BATCH_SIZE)
 
             if (epoch + 1) % eval_interval == 0:
 
-                for a, p in val_dataset:
+                for a, p, n in val_dataset:
                     distributed_test_step([a, p], ALL_BATCH_SIZE)
                 with train_summary_writer.as_default():
                     tf.summary.scalar('loss', loss_train.result().numpy(), step=epoch)

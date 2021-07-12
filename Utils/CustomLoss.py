@@ -92,10 +92,12 @@ class TripletBarlow(K.losses.Loss):
 
         if self.positive:
             c_diff = tf.square(c - I)
+            c_diff = tf.where(I != 1, c_diff * self.alpha, c_diff)
         else:
             c_diff = tf.square(c + I)
+            c_diff = tf.where(I != 1, c_diff * -self.alpha, c_diff)
 
-        c_diff = tf.where(I != 1, c_diff * self.alpha, c_diff)
+
 
         loss = tf.reduce_sum(c_diff)
 

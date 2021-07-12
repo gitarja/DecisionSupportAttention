@@ -27,7 +27,7 @@ def metric_class(q_logits, labels, ref_logits, ref_labels, deep_metric):
 
 
 #checkpoint
-checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\20210707-210203_double\\model\\"
+checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\barlow\\20210712-094810_double\\model\\"
 metric = False
 #model
 model = FewShotModel(filters=64, z_dim=64)
