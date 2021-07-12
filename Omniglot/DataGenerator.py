@@ -53,10 +53,11 @@ class Dataset:
 
     def data_aug(self, x):
 
-        x = tf.image.random_flip_left_right(x)
-        x = tf.image.random_contrast(x, 0, 0.4)
+        x = tf.image.random_brightness(x, 0.15)
 
         return x
+
+
 
     def get_mini_offline_batches(self, n_buffer, batch_size, shots=2,  validation=False):
         half_shot = int(shots / 2)
@@ -85,7 +86,11 @@ class Dataset:
                 pair_positive[i*half_shot:(i+1) * half_shot] = self.data_aug(positive_to_split[half_shot:])
                 # set anchor and pair negatives
                 pair_negative[i * half_shot:(i + 1) * half_shot] = self.data_aug(negative_to_split[half_shot:])
-
+            else:
+                # set anchor and pair positives
+                pair_positive[i * half_shot:(i + 1) * half_shot] = positive_to_split[half_shot:]
+                # set anchor and pair negatives
+                pair_negative[i * half_shot:(i + 1) * half_shot] = negative_to_split[half_shot:]
             # set anchor and pair negatives
             anchor_negative[i*half_shot:(i+1) * half_shot] = negative_to_split[:half_shot]
 

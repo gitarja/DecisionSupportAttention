@@ -5,7 +5,7 @@ class ConvBlock(K.layers.Layer):
     def __init__(self, filters):
         super(ConvBlock, self).__init__()
         self.dense = K.layers.Conv2D(filters, 3, padding="same")
-        self.batch =  K.layers.BatchNormalization()
+        self.batch = K.layers.BatchNormalization()
         self.relu = K.layers.ReLU()
         self.max = K.layers.MaxPool2D(pool_size=(2, 2))
 
@@ -26,7 +26,7 @@ class FewShotModel(K.models.Model):
         self.conv_3 = ConvBlock(filters=filters)
         self.conv_4 = ConvBlock(filters=filters)
         self.dense = K.layers.Dense(z_dim, activation=None)
-        self.normalize = tf.keras.layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=1))
+        self.normalize = tf.keras.layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=-1))
         self.flat = K.layers.Flatten()
 
 

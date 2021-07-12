@@ -44,7 +44,7 @@ if __name__ == '__main__':
     train_dataset = Dataset(mode="train_val", val_frac=0.1)
 
     # training setting
-    eval_interval = 25
+    eval_interval = 50
     inner_batch_size = 125
     ALL_BATCH_SIZE = inner_batch_size * strategy.num_replicas_in_sync
     train_buffer = ALL_BATCH_SIZE * 4
@@ -94,7 +94,7 @@ if __name__ == '__main__':
             decay_steps=1000,
             decay_rate=0.96,
             staircase=True)
-        siamese_optimizer = tf.optimizers.Adam(learning_rate=lr_schedule)
+        siamese_optimizer = tfa.optimizers.LAMB(learning_rate=lr_schedule)
 
         if args.adversarial == True:  # using adversarial as well
             discriminator_optimizer = tf.optimizers.Adam(lr=lr/3)
@@ -209,10 +209,10 @@ if __name__ == '__main__':
                     loss_train.result().numpy(), loss_test.result().numpy()))  # print train and val losses
 
                 val_loss = loss_test.result().numpy()
-                manager.save()
+
                 if (val_loss_th > val_loss):
                     val_loss_th = val_loss
-
+                    manager.save()
                     early_idx = 0
                 else:
                     early_idx += 1
