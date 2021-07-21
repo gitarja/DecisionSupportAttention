@@ -13,7 +13,7 @@ class DiscriminatorModel(K.models.Model):
         self.dropout_1 = K.layers.Dropout(rate=dropout_rate)
 
         #logit
-        self.dense_logit = K.layers.Dense(units=n_output, activation=None, name="dense_logit")
+        self.dense_logit = K.layers.Dense(units=n_output, activation="sigmoid", name="dense_logit")
 
 
 

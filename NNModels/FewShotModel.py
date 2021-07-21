@@ -5,6 +5,12 @@ import random
 import tensorflow_addons as tfa
 WEIGHT_DECAY=5e-4
 import math
+
+
+def l2Distance(X):
+    x1, x2 = X
+    dis = tf.square(x1 - x2)
+    return dis
 class ConvBlock(K.layers.Layer):
     def __init__(self, filters):
         super(ConvBlock, self).__init__()
@@ -44,7 +50,6 @@ class FewShotModel(K.models.Model):
         self.conv_4 = ConvBlock(filters=filters)
 
         #projector
-        self.project = ProjectBlock(filters=1024)
         self.dense = K.layers.Dense(z_dim, activation=None, use_bias=False)
         self.normalize = tf.keras.layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=-1))
         self.flat = K.layers.Flatten()
@@ -61,7 +66,6 @@ class FewShotModel(K.models.Model):
         z = self.conv_2(z)
         z = self.conv_3(z)
         z = self.conv_4(z)
-        z = self.project(self.flat(z))
         z = self.normalize(self.dense(z))
         return z
 
@@ -97,11 +101,11 @@ class FewShotModel(K.models.Model):
 
 class DeepMetric(K.models.Model):
 
-    def __init__(self, filters=128, dropout_rate=0.3, output=1):
+    def __init__(self, filters=1024, output=1):
         super(DeepMetric, self).__init__()
 
-
-        self.dense_logit = K.layers.Dense(output, activation=None)
+        self.project_1 = ProjectBlock(filters)
+        self.dense_logit = K.layers.Dense(output, activation="sigmoid")
 
     def call(self, inputs, training=None, mask=None):
         '''
@@ -110,8 +114,7 @@ class DeepMetric(K.models.Model):
         :param mask:
         :return:
         '''
-        X = K.backend.concatenate(inputs, -1)
-
-        z = self.dense_logit(X)
-
+        x = l2Distance(inputs)
+        x = self.project_1(x)
+        z = self.dense_logit(x)
         return z

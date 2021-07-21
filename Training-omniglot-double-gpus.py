@@ -9,7 +9,7 @@ import numpy as np
 import datetime
 from Omniglot.Conf import TENSOR_BOARD_PATH
 import argparse
-from Utils.CustomLoss import DoubleTriplet, TripletBarlow
+from Utils.CustomLoss import DoubleTriplet, TripletBarlow, DoubleTripletSoft
 
 import random
 import os
@@ -83,11 +83,12 @@ if __name__ == '__main__':
 
     # loss
     triplet_loss = DoubleTriplet(margin=args.margin, soft=args.soft, squared=args.squared)
+    triplet_soft_loss = DoubleTripletSoft(squared=args.squared)
     triplet_barlow_loss = TripletBarlow()
 
     with strategy.scope():
         model = FewShotModel(filters=64, z_dim=z_dim)
-        disc_model = DiscriminatorModel(n_hidden=z_dim, n_output=1, dropout_rate=0.1)
+        disc_model = DeepMetric()
         # check point
         checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
 
@@ -115,6 +116,10 @@ if __name__ == '__main__':
             per_example_loss = triplet_loss(ap, pp, an, pn)
             return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
 
+        def compute_triplet_soft_loss(pos, neg, pos_neg,  global_batch_size):
+            per_example_loss = triplet_soft_loss(pos, neg, pos_neg)
+            return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
+
         def compute_triplet_barlow_loss(ap, pp, an, pn):
 
             per_example_loss = triplet_barlow_loss(ap, pp, an, pn)
@@ -136,9 +141,14 @@ if __name__ == '__main__':
                 pp_logits = model.forward_pos(pp, training=True)
                 pn_logits = model.forward_pos(pn, training=True)
 
+                positive_dist = disc_model([ap_logits, pp_logits])
+                negative_dist = disc_model([an_logits, pn_logits])
+                pos_neg_dist = disc_model([(ap_logits+pp_logits) / 2., (an_logits + pn_logits) / 2.])
+
+                embd_loss = compute_triplet_soft_loss(positive_dist, negative_dist, pos_neg_dist, GLOBAL_BATCH_SIZE)
 
                 # embd_loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits, GLOBAL_BATCH_SIZE)  # triplet loss
-                embd_loss = compute_triplet_barlow_loss(ap_logits, pp_logits, an_logits, pn_logits)
+                # embd_loss = compute_triplet_barlow_loss(ap_logits, pp_logits, an_logits, pn_logits)
                 # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
             siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
@@ -154,8 +164,14 @@ if __name__ == '__main__':
             an_logits = model(an, training=False)
             pn_logits = model(pn, training=False)
 
-            loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits,
-                                                 GLOBAL_BATCH_SIZE)  # triplet loss
+            positive_dist = disc_model([ap_logits, pp_logits])
+            negative_dist = disc_model([an_logits, pn_logits])
+            pos_neg_dist = disc_model([(ap_logits + pp_logits) / 2., (an_logits + pn_logits) / 2.])
+
+            loss = compute_triplet_soft_loss(positive_dist, negative_dist, pos_neg_dist, GLOBAL_BATCH_SIZE)
+
+            # loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits,
+            #                                      GLOBAL_BATCH_SIZE)  # triplet loss
             # loss = compute_triplet_barlow_loss(ap_logits, pp_logits, an_logits, pn_logits)
 
             loss_test(loss)

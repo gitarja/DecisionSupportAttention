@@ -57,6 +57,32 @@ class DoubleTriplet():
         return triplet_loss
 
 
+class DoubleTripletSoft():
+
+    def __init__(self, squared=False):
+        super(DoubleTripletSoft, self).__init__()
+        self.squared = squared
+
+
+    def __call__(self, positive_dis, negative_dis, pos_neg_dis):
+        pos = ops.convert_to_tensor_v2(positive_dis, name="anchor_positive")
+        neg = ops.convert_to_tensor_v2(negative_dis, name="pair_positive")
+        pos_neg = ops.convert_to_tensor_v2(pos_neg_dis, name="anchor_negative")
+
+        # comver tensor
+        pos = tf.cast(pos, tf.float32)
+        neg = tf.cast(neg, tf.float32)
+        pos_dist = (pos + neg) / 2.
+        pos_neg_dist = tf.cast(pos_neg, tf.float32)
+
+        if self.squared:
+            triplet_loss = tf.square(tf.maximum(0.0, 1 - pos_dist + pos_neg_dist ))
+        else:
+            triplet_loss = tf.maximum(0.0, 1 - pos_dist + pos_neg_dist)
+
+        return triplet_loss
+
+
 class TripletBarlow():
 
     def __init__(self, margin=1.,alpha=1e-1):
