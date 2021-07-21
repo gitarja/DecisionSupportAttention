@@ -37,7 +37,7 @@ class Dataset:
         else:
             label = 0
             for i in range(ds.shape[0]):
-                for j in range(4):
+                for j in range(1, 4, 1):
                     for l in range(ds[i].shape[0]):
                         if label not in self.data:
                             self.data[label] = []
@@ -51,11 +51,6 @@ class Dataset:
             del self.labels[:int(len(self.labels) *val_frac)]
 
 
-    def data_aug(self, x):
-
-        x = tf.image.random_brightness(x, 0.15)
-
-        return x
 
 
 
@@ -73,10 +68,10 @@ class Dataset:
             raise ("Shots must be even")
 
         for i in range(n_buffer):
-            label_subsets = random.choices(labels, k=2)
-            positive_to_split = random.choices(
+            label_subsets = random.sample(labels, k=2)
+            positive_to_split = random.sample(
                 self.data[label_subsets[0]], k=shots)
-            negative_to_split = random.choices(
+            negative_to_split = random.sample(
                 self.data[label_subsets[1]], k=shots)
             #set anchor and pair positives
 
@@ -103,6 +98,55 @@ class Dataset:
             dataset = dataset.batch(batch_size)
         else:
             dataset = dataset.shuffle(n_buffer).batch(batch_size)
+
+        return dataset
+
+
+    def get_mini_pairoffline_batches(self, n_buffer, batch_size, shots=2,  validation=False):
+        anchor_positive = np.zeros(shape=(n_buffer * shots, 28, 28, 1))
+        anchor_negative = np.zeros(shape=(n_buffer * shots, 28, 28, 1))
+
+        # pairs
+        pair_positive = np.zeros(shape=(n_buffer * shots, 28, 28, 1))
+        pair_negative = np.zeros(shape=(n_buffer * shots, 28, 28, 1))
+        labels = self.labels
+        if validation:
+            labels = self.val_labels
+
+
+        for i in range(n_buffer):
+            label_subsets = random.sample(labels, k=2)
+            if shots <= len(self.data[label_subsets[0]]):
+                positive_sample = random.sample(
+                    self.data[label_subsets[0]], k=shots)
+                negative_sample = random.sample(
+                    self.data[label_subsets[1]], k=shots)
+                anchor_positive[i * shots:(i + 1) * shots] = positive_sample
+                anchor_negative[i * shots:(i + 1) * shots] = negative_sample
+                pair_positive[i * shots:(i + 1) * shots] = positive_sample[::-1]
+                pair_negative[i * shots:(i + 1) * shots] = negative_sample[::-1]
+            else:
+                anchor_positive[i*shots:(i+1) * shots] = random.choices(
+                    self.data[label_subsets[0]], k=shots)
+                anchor_negative[i*shots:(i+1) * shots] = random.choices(
+                    self.data[label_subsets[1]], k=shots)
+                pair_positive[i * shots:(i + 1) * shots] = random.choices(
+                    self.data[label_subsets[0]], k=shots)
+                pair_negative[i * shots:(i + 1) * shots] = random.choices(
+                    self.data[label_subsets[1]], k=shots)
+
+
+
+
+
+        dataset = tf.data.Dataset.from_tensor_slices(
+            (anchor_positive.astype(np.float32), pair_positive.astype(np.float32), anchor_negative.astype(np.float32),
+             pair_negative.astype(np.float32))
+        )
+        if validation:
+            dataset = dataset.batch(batch_size)
+        else:
+            dataset = dataset.shuffle(n_buffer * shots).batch(batch_size)
 
         return dataset
 
@@ -145,27 +189,27 @@ class Dataset:
 
 
         if outlier == False:
-            label_subsets = random.choices(self.labels, k=num_classes)
+            label_subsets = random.sample(self.labels, k=num_classes)
             for class_idx, class_obj in enumerate(label_subsets):
                 temp_labels[class_idx] = class_idx
                 ref_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
 
                 # sample images
 
-                images_to_split = random.choices(
+                images_to_split = random.sample(
                     self.data[label_subsets[class_idx]], k=shots + 1)
                 temp_images[class_idx] = images_to_split[-1]
                 ref_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[:-1]
         else:
             # generate support
-            support_labels = random.choices(self.labels[:int(len(self.labels)/2)], k=num_classes)
+            support_labels = random.sample(self.labels[:int(len(self.labels)/2)], k=num_classes)
             for class_idx, class_obj in enumerate(support_labels):
                 ref_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
                 ref_images[class_idx * shots: (class_idx + 1) * shots] = random.choices(
                     self.data[support_labels[class_idx]], k=shots)
 
             # generate query
-            query_labels = random.choices(self.labels[int(len(self.labels) / 2):], k=num_classes)
+            query_labels = random.sample(self.labels[int(len(self.labels) / 2):], k=num_classes)
             for class_idx, class_obj in enumerate(query_labels):
                 temp_labels[class_idx ] = class_idx
                 ref_images[class_idx] = random.choices(self.data[query_labels[class_idx]])
@@ -191,8 +235,8 @@ if __name__ == '__main__':
         for b in range(5):
             temp_image = test_dataset.data[sample_keys[a]][b]
             temp_image = np.stack((temp_image[:, :, 0],) * 3, axis=2)
-            temp_image *= 255
-            temp_image = np.clip(temp_image, 0, 255).astype("uint8")
+            temp_image *= 228
+            temp_image = np.clip(temp_image, 0, 228).astype("uint8")
             if b == 2:
                 axarr[a, b].set_title("Class : " + sample_keys[a])
             axarr[a, b].imshow(temp_image, cmap="gray")

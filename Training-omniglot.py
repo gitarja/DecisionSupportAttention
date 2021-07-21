@@ -114,30 +114,13 @@ if __name__ == '__main__':
             # sample from gaussian mixture
             samples = GaussianMultivariate(len(images), z_dim, mean=0, var=1.)
 
-            with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
+            with tf.GradientTape() as siamese_tape:
                 train_logits = model(images, training=True)
                 embd_loss = triplet_loss(labels, train_logits)  # triplet loss
 
                 train_loss.append(embd_loss)
-                if args.adversarial == True:  # using adversarial as well
-                    # generative
 
-                    z_fake = disc_model(train_logits, training=True)
-                    z_true = disc_model(samples, training=True)
 
-                    # discriminator loss
-                    D_loss_fake = binary_loss(tf.zeros_like(z_fake), z_fake)
-                    D_loss_real = binary_loss(tf.ones_like(z_true), z_true)
-                    D_loss = D_loss_real + D_loss_fake
-
-                    # generator loss
-                    G_loss = binary_loss(tf.ones_like(z_fake), z_fake)
-
-            if args.adversarial == True:  # using adversarial as well
-                discriminator_grads = discriminator_tape.gradient(D_loss, disc_model.trainable_weights)
-                generator_grads = generator_tape.gradient(G_loss, model.trainable_weights)
-                discriminator_optimizer.apply_gradients(zip(discriminator_grads, disc_model.trainable_weights))
-                generator_optimizer.apply_gradients(zip(generator_grads, model.trainable_weights))
             # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
             siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)

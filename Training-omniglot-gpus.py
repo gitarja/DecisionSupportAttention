@@ -117,37 +117,19 @@ if __name__ == '__main__':
     with strategy.scope():
         def train_step(inputs, GLOBAL_BATCH_SIZE=0):
             images, labels = inputs
-            # sample from gaussian mixture
-            samples = tf.math.l2_normalize(GaussianMultivariate(len(images), z_dim, mean=0, var=1.), -1)
 
-            with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
+            with tf.GradientTape() as siamese_tape:
                 train_logits = model(images, training=True)
                 embd_loss = compute_triplet_loss(labels, train_logits, GLOBAL_BATCH_SIZE)  # triplet loss
                 train_loss.append(embd_loss)
-                if args.adversarial == True:  # using adversarial as well
-                    # generative
 
-                    z_fake = disc_model(train_logits, training=True)
-                    z_true = disc_model(samples, training=True)
-
-                    # discriminator loss
-                    D_loss_fake = compute_binary_loss(z_fake, tf.zeros_like(z_fake), GLOBAL_BATCH_SIZE)
-                    D_loss_real = compute_binary_loss(z_true, tf.ones_like(z_true), GLOBAL_BATCH_SIZE)
-                    D_loss = D_loss_real + D_loss_fake
-
-                    # generator loss
-                    G_loss = compute_binary_loss(z_fake, tf.ones_like(z_fake), GLOBAL_BATCH_SIZE)
 
                 # Use the gradient tape to automatically retrieve
                 # the gradients of the trainable variables with respect to the loss.
             siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
             siamese_optimizer.apply_gradients(zip(siamese_grads, model.trainable_weights))
 
-            if args.adversarial == True:  # using adversarial as well
-                discriminator_grads = discriminator_tape.gradient(D_loss, disc_model.trainable_weights)
-                generator_grads = generator_tape.gradient(G_loss, model.trainable_weights)
-                discriminator_optimizer.apply_gradients(zip(discriminator_grads, disc_model.trainable_weights))
-                generator_optimizer.apply_gradients(zip(generator_grads, model.trainable_weights))
+
             loss_train(embd_loss)
             return embd_loss
 
@@ -204,7 +186,7 @@ if __name__ == '__main__':
             for images, labels in mini_dataset:
                 distributed_train_step([images, labels], ALL_BATCH_SIZE)
 
-            if (ep + 1) % eval_interval == 0:
+            if (epoch + 1) % eval_interval == 0:
 
                 manager.save()
                 for test_images, test_labels in val_dataset:
@@ -216,15 +198,15 @@ if __name__ == '__main__':
                 print("Training loss=%f, validation loss=%f" % (
                     loss_train.result().numpy(), loss_test.result().numpy()))  # print train and val losses
                 reset_metric()
-
-                # if (val_loss_th > val_loss):
-                #     val_loss_th = val_loss
-                #
-                #     early_idx = 0
-                # else:
-                #     early_idx += 1
-                # if early_idx == early_th:
-                #     break
+                val_loss =  loss_test.result().numpy()
+                if (val_loss_th > val_loss):
+                    val_loss_th = val_loss
+                    manager.save()
+                    early_idx = 0
+                else:
+                    early_idx += 1
+                if early_idx == early_th:
+                    break
 
 
 

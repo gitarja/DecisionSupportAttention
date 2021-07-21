@@ -8,6 +8,7 @@ from NNModels.FewShotModel import FewShotModel, DeepMetric
 from Utils.Libs import kNN, euclidianMetric, computeACC, cosineSimilarity
 import numpy as np
 import random
+from scipy.stats import pearsonr
 
 
 def knn_class(q_logits, labels, ref_logits, ref_labels):
@@ -24,21 +25,30 @@ def metric_class(q_logits, labels, ref_logits, ref_labels, deep_metric):
 
     return np.average(labels==pred_labels)
 
+def correlation_class(q_logits, labels, ref_logits, ref_labels):
+
+    q_logits = (q_logits - tf.reduce_mean(q_logits, 0)) /  tf.math.reduce_std(q_logits, 0)
+    ref_logits = (ref_logits - tf.reduce_mean(ref_logits, 0)) / tf.math.reduce_std(ref_logits, 0)
+
+    corr = q_logits @ tf.transpose(ref_logits)
+
+    preds = ref_labels[tf.argmax(corr, -1).numpy()]
+
+    return np.mean(preds == labels)
+
+
 
 
 #checkpoint
-checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\barlow\\20210712-204955\\model\\"
-metric = False
+checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\20210721-142111_double\\model\\"
+correlation = False
 #model
 model = FewShotModel(filters=64, z_dim=64)
-deep_metric = DeepMetric(filters=64)
 # check point
-if metric:
-    checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model, deep_metric=deep_metric)
-else:
-    checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
 
-manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=3)
+checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
+
+manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=10)
 checkpoint.restore(manager.latest_checkpoint)
 
 # dataset
@@ -47,19 +57,19 @@ shots = 5
 
 
 random.seed(2)
-for way in [5, 20, 50, 100]:
+for way in [5]:
     acc_avg = []
     for i in range(1000):
         query, labels, references, ref_labels = test_dataset.get_batches(shots=shots, num_classes=way)
 
-        q_logits = model(query, training=False)
-        ref_logits = model(references, training=False)
+        q_logits = model(query)
+        ref_logits = model(references)
 
-        if metric:
-            acc = metric_class(q_logits, labels, ref_logits, ref_labels, deep_metric)
+        if correlation:
+            acc = correlation_class(q_logits, labels, ref_logits, ref_labels)
         else:
-
-            acc = knn_class(q_logits, labels, ref_logits, ref_labels)
+            acc = euclidianMetric(q_logits, ref_logits, labels, ref_num=shots)
+            # acc = knn_class(q_logits, labels, ref_logits, ref_labels)
 
             # dist = cosineSimilarity(val_logits, ref_logits, ref_num=5)
             # acc = computeACC(dist, labels)

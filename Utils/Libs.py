@@ -1,14 +1,17 @@
 import tensorflow as tf
 import math
 import numpy as np
-from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neighbors import KNeighborsClassifier,RadiusNeighborsClassifier
+from sklearn.metrics import euclidean_distances
 
-def euclidianMetric(query, references, ref_num=1):
+def euclidianMetric(query, references, labels, ref_num=1):
     n = query.shape[0]
     q = query# n-class * k-shot
-    r = tf.reshape(references, (n, ref_num, -1))
-    logits = -tf.reduce_sum(tf.sqrt((q - r) ** 2), axis=-1)
-    return logits
+    r = references
+    disc = euclidean_distances(q, r)
+    disc = np.reshape(disc, (n, n,ref_num))
+    pred = tf.argmin(np.mean(disc, -1), 1)
+    return pred == labels
 
 def computeACC(metrics, labels):
     pred = tf.argmax(metrics, -1)
@@ -31,7 +34,7 @@ def predict_class(x):
 def kNN(query, q_labels, references, ref_labels, ref_num=1, th=0.5):
     X = references.numpy()
     y = ref_labels + 1
-    classifier = KNeighborsClassifier(n_neighbors=ref_num)
+    classifier = KNeighborsClassifier(n_neighbors=ref_num, metric="euclidean", algorithm="kd_tree")
     classifier.fit(X, y)
 
     q = query.numpy()
@@ -46,7 +49,7 @@ def kNN(query, q_labels, references, ref_labels, ref_num=1, th=0.5):
     # return np.average(predictions==q_y)
 
     #identify outliers or novel class
-    return classifier.score(q, q_y)
+    return classifier.predict(q) == q_y
 
 
 

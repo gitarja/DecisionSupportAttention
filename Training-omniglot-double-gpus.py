@@ -9,17 +9,24 @@ import numpy as np
 import datetime
 from Omniglot.Conf import TENSOR_BOARD_PATH
 import argparse
-from Utils.CustomLoss import DoubleTriplet
-from Utils.PriorFactory import GaussianMultivariate, Gaussian
+from Utils.CustomLoss import DoubleTriplet, TripletBarlow
+
 import random
 import os
 
-os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
+os.environ["TF_XLA_FLAGS"] = "--tf_xla_enable_xla_devices"
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2"
 
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--adversarial', type=bool, default=False)
+    parser.add_argument('--margin', type=float, default=1.)
+    parser.add_argument('--soft', type=bool, default=False)
+    parser.add_argument('--project', type=bool, default=False)
+    parser.add_argument('--squared', type=bool, default=False)
+    parser.add_argument('--z_dim', type=int, default=64)
+
 
     args = parser.parse_args()
 
@@ -41,44 +48,42 @@ if __name__ == '__main__':
 
 
     random.seed(1)  # set seed
-    train_dataset = Dataset(mode="train_val", val_frac=0.1)
+    train_dataset = Dataset(mode="train_val", val_frac=0.05)
 
     # training setting
-    eval_interval = 50
-    inner_batch_size = 125
-    ALL_BATCH_SIZE = inner_batch_size * strategy.num_replicas_in_sync
-    train_buffer = ALL_BATCH_SIZE * 4
+    eval_interval = 25
+    train_buffer = 512
+    batch_size = 200
+    ALL_BATCH_SIZE = batch_size * strategy.num_replicas_in_sync
     val_buffer = 100
     ref_num = 5
     val_loss_th = 1e+3
     shots=20
 
     # training setting
-    episodes = 5000
+    epochs = 500000
     lr = 1e-3
     lr_siamese = 1e-3
 
     # early stopping
-    early_th = 5
+    early_th = 10
     early_idx = 0
 
     # siamese and discriminator hyperparameter values
-    z_dim = 64
+    z_dim = args.z_dim
 
     # tensor board
     log_dir = TENSOR_BOARD_PATH + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double"
     checkpoint_path = TENSOR_BOARD_PATH + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double" + "\\model"
-    if args.adversarial == True:
-        log_dir = TENSOR_BOARD_PATH + "adv\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double"
-        checkpoint_path = TENSOR_BOARD_PATH + "adv\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double" + "\\model"
+
     train_log_dir = log_dir + "\\train"
     test_log_dir = log_dir + "\\test"
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    triplet_loss = DoubleTriplet()
-    binary_loss = tf.losses.BinaryCrossentropy(from_logits=True, reduction=tf.keras.losses.Reduction.NONE)
+    triplet_loss = DoubleTriplet(margin=args.margin, soft=args.soft, squared=args.squared)
+    triplet_barlow_loss = TripletBarlow()
 
     with strategy.scope():
         model = FewShotModel(filters=64, z_dim=z_dim)
@@ -86,19 +91,14 @@ if __name__ == '__main__':
         # check point
         checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
 
-        manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=3)
-
+        manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=early_th)
         # optimizer
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             lr,
             decay_steps=1000,
             decay_rate=0.96,
             staircase=True)
-        siamese_optimizer = tfa.optimizers.LAMB(learning_rate=lr_schedule)
-
-        if args.adversarial == True:  # using adversarial as well
-            discriminator_optimizer = tf.optimizers.Adam(lr=lr/3)
-            generator_optimizer = tf.optimizers.Adam(lr=lr)
+        siamese_optimizer = tf.optimizers.Adam(learning_rate=lr_schedule)
 
         #metrics
         # train
@@ -109,35 +109,37 @@ if __name__ == '__main__':
 
 
     with strategy.scope():
-        def make_pair_hards(x, p):
-            w = tf.matmul(x, tf.linalg.pinv(p))
-            x_p = tf.matmul(w, x)
 
-            return x_p
         def compute_triplet_loss(ap, pp, an, pn, global_batch_size):
 
             per_example_loss = triplet_loss(ap, pp, an, pn)
             return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
 
-        def compute_binary_loss(y_true, y_pred, global_batch_size):
-            per_example_loss = binary_loss(y_true, y_pred)
-            return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
+        def compute_triplet_barlow_loss(ap, pp, an, pn):
 
+            per_example_loss = triplet_barlow_loss(ap, pp, an, pn)
+            return per_example_loss
     with strategy.scope():
 
 
         def train_step(inputs, GLOBAL_BATCH_SIZE=0):
-            ap, pp, an, pn = inputs
+            ap, pp,  an, pn = inputs
 
             with tf.GradientTape() as siamese_tape, tf.GradientTape():
-                ap_logits = model(ap, training=True)
-                pp_logits = model(pp, training=True)
-                an_logits = model(an, training=True)
-                pn_logits = model(pn, training=True)
+                if args.project:
+                    ap_logits = model.forward_pos(ap, training=True)
+                    an_logits = model.forward_pos(an, training=True)
+                else:
+                    ap_logits = model(ap, training=True)
+                    an_logits = model(an, training=True)
+
+                pp_logits = model.forward_pos(pp, training=True)
+                pn_logits = model.forward_pos(pn, training=True)
 
 
-                embd_loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits, GLOBAL_BATCH_SIZE)  # triplet loss
-            # Use the gradient tape to automatically retrieve
+                # embd_loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits, GLOBAL_BATCH_SIZE)  # triplet loss
+                embd_loss = compute_triplet_barlow_loss(ap_logits, pp_logits, an_logits, pn_logits)
+                # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
             siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
             siamese_optimizer.apply_gradients(zip(siamese_grads, model.trainable_weights))
@@ -154,6 +156,7 @@ if __name__ == '__main__':
 
             loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits,
                                                  GLOBAL_BATCH_SIZE)  # triplet loss
+            # loss = compute_triplet_barlow_loss(ap_logits, pp_logits, an_logits, pn_logits)
 
             loss_test(loss)
             return loss
@@ -172,9 +175,6 @@ if __name__ == '__main__':
             return strategy.reduce(tf.distribute.ReduceOp.SUM, per_replica_losses,
                                    axis=None)
 
-
-
-
         @tf.function
         def distributed_test_step(dataset_inputs, GLOBAL_BATCH_SIZE):
             return strategy.run(val_step, args=(dataset_inputs,GLOBAL_BATCH_SIZE))
@@ -182,25 +182,24 @@ if __name__ == '__main__':
 
         # validation dataset
         val_dataset = train_dataset.get_mini_offline_batches(val_buffer,
-                                                             inner_batch_size, shots=shots,
+                                                             batch_size, shots=shots,
                                                              validation=True,
                                                              )
 
-        for epoch in range(episodes):
+        for epoch in range(epochs):
             # dataset
-            mini_dataset = train_dataset.get_mini_offline_batches(train_buffer,
-                                                                  inner_batch_size,shots=shots,
+            mini_dataset = train_dataset.get_mini_pairoffline_batches(train_buffer,
+                                                                  batch_size,shots=shots,
                                                                   validation=False,
                                                                   )
 
-            for ap, pp, an, pn in mini_dataset:
-                if (epoch + 1) <= 500:
-                    distributed_train_step([ap, pp, an, pn], ALL_BATCH_SIZE)
+            for ap, pp,  an, pn in mini_dataset:
+                distributed_train_step([ap, pp,  an, pn], ALL_BATCH_SIZE)
 
             if (epoch + 1) % eval_interval == 0:
 
-                for ap, pp, an, pn in val_dataset:
-                    distributed_test_step([ap, pp, an, pn], ALL_BATCH_SIZE)
+                for ap, pp,  an, pn  in val_dataset:
+                    distributed_test_step([ap, pp,  an, pn], ALL_BATCH_SIZE)
                 with train_summary_writer.as_default():
                     tf.summary.scalar('loss', loss_train.result().numpy(), step=epoch)
                 with test_summary_writer.as_default():
@@ -214,6 +213,7 @@ if __name__ == '__main__':
                     val_loss_th = val_loss
                     manager.save()
                     early_idx = 0
+
                 else:
                     early_idx += 1
                 reset_metric()
