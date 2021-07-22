@@ -9,12 +9,26 @@ import math
 
 def l2Distance(X):
     x1, x2 = X
-    dis = tf.square(x1 - x2)
+    dis = x1 - x2
     return dis
+def euclidean_distance(vects):
+    """Find the Euclidean distance between two vectors.
+
+    Arguments:
+        vects: List containing two tensors of same length.
+
+    Returns:
+        Tensor containing euclidean distance
+        (as floating point value) between vectors.
+    """
+
+    x, y = vects
+    sum_square = tf.math.reduce_sum(tf.math.square(x - y), axis=1, keepdims=True)
+    return tf.math.sqrt(tf.math.maximum(sum_square, tf.keras.backend.epsilon()))
 class ConvBlock(K.layers.Layer):
     def __init__(self, filters):
         super(ConvBlock, self).__init__()
-        self.dense = K.layers.Conv2D(filters, 3, padding="same", use_bias=False)
+        self.dense = K.layers.Conv2D(filters, 3, padding="same", use_bias=True)
         self.batch = K.layers.BatchNormalization()
         self.relu = K.layers.ReLU()
         self.max = K.layers.MaxPool2D(pool_size=(2, 2))
@@ -50,10 +64,11 @@ class FewShotModel(K.models.Model):
         self.conv_4 = ConvBlock(filters=filters)
 
         #projector
-        self.dense = K.layers.Dense(z_dim, activation=None, use_bias=False)
+        self.dense = K.layers.Dense(z_dim, activation=None, use_bias=True)
         self.normalize = tf.keras.layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=-1))
         self.flat = K.layers.Flatten()
         self.relu = tf.keras.layers.ReLU()
+        self.batch = K.layers.BatchNormalization()
 
         self.random_zoomout = tf.keras.layers.experimental.preprocessing.RandomZoom((-0.1, 0.1))
         self.random_zoomout_neg = tf.keras.layers.experimental.preprocessing.RandomZoom((-0.5, 0.5))
@@ -66,7 +81,8 @@ class FewShotModel(K.models.Model):
         z = self.conv_2(z)
         z = self.conv_3(z)
         z = self.conv_4(z)
-        z = self.normalize(self.dense(z))
+        z = self.dense(self.flat(z))
+        # z = self.dense(self.batch(self.flat(z)))
         return z
 
     def forward_pos(self, inputs, training=None):
@@ -101,11 +117,12 @@ class FewShotModel(K.models.Model):
 
 class DeepMetric(K.models.Model):
 
-    def __init__(self, filters=1024, output=1):
+    def __init__(self, filters=256, output=1):
         super(DeepMetric, self).__init__()
 
-        self.project_1 = ProjectBlock(filters)
-        self.dense_logit = K.layers.Dense(output, activation="sigmoid")
+        self.dist = K.layers.Lambda(euclidean_distance)
+        self.batch = K.layers.BatchNormalization()
+        self.dense_sigmoid = K.layers.Dense(units=1, activation="sigmoid")
 
     def call(self, inputs, training=None, mask=None):
         '''
@@ -114,7 +131,7 @@ class DeepMetric(K.models.Model):
         :param mask:
         :return:
         '''
-        x = l2Distance(inputs)
-        x = self.project_1(x)
-        z = self.dense_logit(x)
+        x = self.batch(self.dist(inputs))
+        z = self.dense_sigmoid(x)
+
         return z

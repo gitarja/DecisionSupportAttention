@@ -47,7 +47,8 @@ class DoubleTriplet():
         if self.soft:
             triplet_loss = tf.math.log1p(tf.math.exp(pull_in - push_away))
         elif self.squared:
-            triplet_loss = tf.square(tf.maximum(0.0, (self.margin + pull_in) - (push_away)))
+            triplet_loss = tf.square(tf.maximum(0.0, self.margin - push_away)) + tf.square(pull_in)
+
         else:
             triplet_loss = tf.maximum(0.0, (self.margin + pull_in) - (push_away))
 
@@ -72,13 +73,16 @@ class DoubleTripletSoft():
         # comver tensor
         pos = tf.cast(pos, tf.float32)
         neg = tf.cast(neg, tf.float32)
-        pos_dist = (pos + neg) / 2.
         pos_neg_dist = tf.cast(pos_neg, tf.float32)
+        pos_dist = (pos + neg) / 2.
 
-        if self.squared:
-            triplet_loss = tf.square(tf.maximum(0.0, 1 - pos_dist + pos_neg_dist ))
-        else:
-            triplet_loss = tf.maximum(0.0, 1 - pos_dist + pos_neg_dist)
+        # pos_loss = tf.losses.binary_crossentropy(tf.zeros_like(pos_dist), pos_dist, from_logits=False)
+        # pos_neg_loss = tf.losses.binary_crossentropy(tf.ones_like(pos_neg_dist), pos_neg_dist, from_logits=False)
+        #
+        # triplet_loss = (pos_loss + pos_neg_loss)
+
+        triplet_loss = tf.square(tf.maximum(0.0, 1. - pos_dist)) + tf.square(pos_neg_dist)
+
 
         return triplet_loss
 

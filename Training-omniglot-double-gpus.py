@@ -51,7 +51,7 @@ if __name__ == '__main__':
     train_dataset = Dataset(mode="train_val", val_frac=0.05)
 
     # training setting
-    eval_interval = 25
+    eval_interval = 5
     train_buffer = 512
     batch_size = 200
     ALL_BATCH_SIZE = batch_size * strategy.num_replicas_in_sync
@@ -90,7 +90,7 @@ if __name__ == '__main__':
         model = FewShotModel(filters=64, z_dim=z_dim)
         disc_model = DeepMetric()
         # check point
-        checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
+        checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model, deep_metric_model=disc_model)
 
         manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=early_th)
         # optimizer
@@ -99,7 +99,7 @@ if __name__ == '__main__':
             decay_steps=1000,
             decay_rate=0.96,
             staircase=True)
-        siamese_optimizer = tf.optimizers.Adam(learning_rate=lr_schedule)
+        siamese_optimizer = tfa.optimizers.LAMB(learning_rate=lr_schedule)
 
         #metrics
         # train
@@ -141,13 +141,13 @@ if __name__ == '__main__':
                 pp_logits = model.forward_pos(pp, training=True)
                 pn_logits = model.forward_pos(pn, training=True)
 
-                positive_dist = disc_model([ap_logits, pp_logits])
-                negative_dist = disc_model([an_logits, pn_logits])
-                pos_neg_dist = disc_model([(ap_logits+pp_logits) / 2., (an_logits + pn_logits) / 2.])
+                # positive_dist = disc_model([ap_logits, pp_logits])
+                # negative_dist = disc_model([an_logits, pn_logits])
+                # pos_neg_dist = disc_model([(ap_logits+pp_logits) / 2., (an_logits + pn_logits) / 2.])
+                #
+                # embd_loss = compute_triplet_soft_loss(positive_dist, negative_dist, pos_neg_dist, GLOBAL_BATCH_SIZE)
 
-                embd_loss = compute_triplet_soft_loss(positive_dist, negative_dist, pos_neg_dist, GLOBAL_BATCH_SIZE)
-
-                # embd_loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits, GLOBAL_BATCH_SIZE)  # triplet loss
+                embd_loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits, GLOBAL_BATCH_SIZE)  # triplet loss
                 # embd_loss = compute_triplet_barlow_loss(ap_logits, pp_logits, an_logits, pn_logits)
                 # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
@@ -164,14 +164,14 @@ if __name__ == '__main__':
             an_logits = model(an, training=False)
             pn_logits = model(pn, training=False)
 
-            positive_dist = disc_model([ap_logits, pp_logits])
-            negative_dist = disc_model([an_logits, pn_logits])
-            pos_neg_dist = disc_model([(ap_logits + pp_logits) / 2., (an_logits + pn_logits) / 2.])
+            # positive_dist = disc_model([ap_logits, pp_logits])
+            # negative_dist = disc_model([an_logits, pn_logits])
+            # pos_neg_dist = disc_model([(ap_logits + pp_logits) / 2., (an_logits + pn_logits) / 2.])
+            #
+            # loss = compute_triplet_soft_loss(positive_dist, negative_dist, pos_neg_dist, GLOBAL_BATCH_SIZE)
 
-            loss = compute_triplet_soft_loss(positive_dist, negative_dist, pos_neg_dist, GLOBAL_BATCH_SIZE)
-
-            # loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits,
-            #                                      GLOBAL_BATCH_SIZE)  # triplet loss
+            loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits,
+                                                 GLOBAL_BATCH_SIZE)  # triplet loss
             # loss = compute_triplet_barlow_loss(ap_logits, pp_logits, an_logits, pn_logits)
 
             loss_test(loss)

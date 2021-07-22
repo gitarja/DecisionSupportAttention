@@ -15,13 +15,14 @@ def knn_class(q_logits, labels, ref_logits, ref_labels):
     acc = kNN(q_logits, labels, ref_logits, ref_labels, ref_num=1)
     return acc
 
-def metric_class(q_logits, labels, ref_logits, ref_labels, deep_metric):
+def metric_class(q_logits, labels, ref_logits, ref_labels, deep_metric, ref_num=5):
 
     pred_labels = np.zeros_like(labels)
     for i in range(len(q_logits)):
         query = tf.tile(tf.expand_dims(q_logits[i],0), (len(ref_logits), 1))
-        logits = deep_metric([query, ref_logits])
-        pred_labels[i] = ref_labels[tf.argmax(logits).numpy()]
+        disc = deep_metric([query, ref_logits])
+        # disc = tf.reduce_mean(tf.reshape(disc, shape=(len(labels), ref_num)), -1)
+        pred_labels[i] = ref_labels[tf.argmax(disc).numpy()]
 
     return np.average(labels==pred_labels)
 
@@ -40,13 +41,14 @@ def correlation_class(q_logits, labels, ref_logits, ref_labels):
 
 
 #checkpoint
-checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\20210721-142111_double\\model\\"
+checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\20210722-121137_double\\model\\"
 correlation = False
 #model
 model = FewShotModel(filters=64, z_dim=64)
+deep_metric = DeepMetric()
 # check point
 
-checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
+checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model, deep_metric_model=deep_metric)
 
 manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=10)
 checkpoint.restore(manager.latest_checkpoint)
@@ -70,6 +72,7 @@ for way in [5]:
         else:
             acc = euclidianMetric(q_logits, ref_logits, labels, ref_num=shots)
             # acc = knn_class(q_logits, labels, ref_logits, ref_labels)
+            # acc = metric_class(q_logits, labels, ref_logits, ref_labels, deep_metric, ref_num=shots)
 
             # dist = cosineSimilarity(val_logits, ref_logits, ref_num=5)
             # acc = computeACC(dist, labels)
