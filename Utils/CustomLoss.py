@@ -11,9 +11,15 @@ def off_diagonal(x):
 def normalize(x):
         return (x - tf.reduce_mean(x, 0)) / tf.math.reduce_std(x, 0)
 
-def lip_dist(x1, x2):
-    r = x1 - x2
-    return -tf.reduce_sum(tf.math.log((4 * tf.math.exp(r)) / tf.square(1+tf.math.exp(r))), 1)
+def l2_dis(x1, x2):
+    return tf.reduce_sum(tf.square(x1 - x2), 1)
+
+def log_cosh_dis(x1, x2):
+    return tf.reduce_sum(tf.math.log(tf.math.cosh(x1 - x2)), 1)
+
+
+
+
 class DoubleTriplet():
 
     def __init__(self, margin=1., soft=False, squared=False):
@@ -35,19 +41,26 @@ class DoubleTriplet():
         an = tf.cast(an, tf.float32)
         pn = tf.cast(pn, tf.float32)
 
-        d_pos = tf.reduce_sum(tf.square(ap - pp), 1)  # distance between positive anchor and pair
-        d_neg = tf.reduce_sum(tf.square(an - pn), 1)  # distance between negative anchor and pair
-        # d_pos_neg = tf.reduce_sum(tf.square(ap-an), 1)  # distance between positive and negative anchor
-        d_pos_neg = tf.reduce_sum(tf.square(((ap + pp)/2.) - ((an + pn)/2.)), 1)  # distance between positive and negative anchor
+        centroid_pos = (ap + pp)/2.
+        centroid_neg = (an + pn)/2.
+
+
+        # d_pos = l2_dis(ap, pp) # distance between positive anchor and pair
+        # d_neg = l2_dis(an, pn)  # distance between negative anchor and pair
+        # d_pos_neg = l2_dis(centroid_pos, centroid_neg)  # distance between positive and negative centroids
+
+        d_pos = l2_dis(ap, pp)  # distance between positive anchor and pair
+        d_neg = l2_dis(an, pn)  # distance between negative anchor and pair
+        d_pos_neg = l2_dis(centroid_pos, centroid_neg)  # distance between positive and negative centroids
 
 
         pull_in = (d_neg + d_pos)/2.
         push_away = d_pos_neg
 
         if self.soft:
-            triplet_loss = tf.math.log1p(tf.math.exp(pull_in - push_away))
+            triplet_loss = tf.square(pull_in)
         elif self.squared:
-            triplet_loss = tf.square(tf.maximum(0.0, self.margin - push_away)) + tf.square(pull_in)
+            triplet_loss = tf.square(tf.maximum(0.0, self.margin - push_away + pull_in))
 
         else:
             triplet_loss = tf.maximum(0.0, (self.margin + pull_in) - (push_away))

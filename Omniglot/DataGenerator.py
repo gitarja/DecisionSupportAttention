@@ -13,7 +13,7 @@ class Dataset:
 
     def __init__(self, mode="training", val_frac=0.1):
 
-        if mode=="training" or mode=="train_val":
+        if mode=="train" or mode=="train_val":
             with open(DATASET_PATH + "dataTrain.pickle", 'rb') as f:
                 ds = pickle.load(f)
         elif mode=="test":
@@ -150,35 +150,6 @@ class Dataset:
 
         return dataset
 
-    def get_mini_batches(self, n_buffer, batch_size, shots, num_classes, validation=False):
-
-        temp_labels = np.zeros(shape=(num_classes * shots))
-        temp_images = np.zeros(shape=(num_classes * shots, 28, 28, 1))
-        label_subsets = random.choices(self.labels, k=num_classes)
-        if validation:
-            label_subsets = self.val_labels
-            temp_labels = np.zeros(shape=(len(label_subsets) * shots))
-            temp_images = np.zeros(shape=(len(label_subsets) * shots, 28, 28, 1))
-        for class_idx, class_obj in enumerate(label_subsets):
-            temp_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
-
-            # sample images
-            temp_images[class_idx * shots: (class_idx + 1) * shots] = random.choices(
-                    self.data[label_subsets[class_idx]], k=shots)
-
-        dataset = tf.data.Dataset.from_tensor_slices(
-            (temp_images.astype(np.float32), temp_labels.astype(np.int32))
-        )
-        if validation:
-            dataset = dataset.batch(batch_size)
-        else:
-            dataset = dataset.shuffle(n_buffer).batch(batch_size)
-
-        return dataset
-
-    # def get_train_batches(self):
-
-    # def get_train_batches(self):
 
     def get_batches(self, shots, num_classes, outlier=False):
 
@@ -235,8 +206,8 @@ if __name__ == '__main__':
         for b in range(5):
             temp_image = test_dataset.data[sample_keys[a]][b]
             temp_image = np.stack((temp_image[:, :, 0],) * 3, axis=2)
-            temp_image *= 228
-            temp_image = np.clip(temp_image, 0, 228).astype("uint8")
+            temp_image *= 255
+            temp_image = np.clip(temp_image, 0, 255).astype("uint8")
             if b == 2:
                 axarr[a, b].set_title("Class : " + sample_keys[a])
             axarr[a, b].imshow(temp_image, cmap="gray")

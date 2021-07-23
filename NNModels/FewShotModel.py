@@ -81,8 +81,8 @@ class FewShotModel(K.models.Model):
         z = self.conv_2(z)
         z = self.conv_3(z)
         z = self.conv_4(z)
-        z = self.dense(self.flat(z))
-        # z = self.dense(self.batch(self.flat(z)))
+        z = self.flat(z)
+        z = self.normalize(self.dense(z))
         return z
 
     def forward_pos(self, inputs, training=None):
@@ -100,11 +100,10 @@ class FewShotModel(K.models.Model):
 
 
     def data_aug_pos(self, x):
-        deg = tf.random.uniform([len(x)], .1, 15.)
-        optional = tf.random.uniform([len(x)], 0, 1, dtype=tf.int32)
-        rad = ((tf.cast(optional, tf.float32) * 345.) + deg) * (math.pi / 180)
-        x = tfa.image.rotate(x, rad, fill_mode="nearest")
+        rad = tf.random.uniform([len(x)], 0., 15.)* (math.pi / 180)
 
+        x = tfa.image.rotate(x, rad, fill_mode="nearest")
+        # x = self.random_zoomout(x)
         return x
 
     def data_aug_neg(self, x):

@@ -46,18 +46,18 @@ class Dataset:
             self.val_labels = self.labels[:int(len(self.labels) * val_frac)]  # take 20% classes as validation
             del self.labels[:int(len(self.labels) * val_frac)]
 
-        self.random_zoomout = tf.keras.layers.experimental.preprocessing.RandomZoom((-0.1, 0.1))
+        self.random_zoomout = tf.keras.layers.experimental.preprocessing.RandomZoom((-0.2, 0.2))
 
         self.random_zoomout_neg = tf.keras.layers.experimental.preprocessing.RandomZoom((-0.7, 0.7), (-0.7, 0.7))
 
     def data_aug_pos(self, x):
         x = tf.expand_dims(tf.expand_dims(x, -1), 0)
-        deg = tf.random.uniform([len(x)], .1, 15.)
-        optional = tf.random.uniform([len(x)], 0, 1, dtype=tf.int32)
-        rad = ((tf.cast(optional, tf.float32) * 345.) + deg) * (math.pi / 180)
-        x = tfa.image.rotate(x, rad, fill_mode="nearest")
-        if optional == 1:
-            x = self.random_zoomout(x)
+        # deg = tf.random.uniform([len(x)], .1, 15.)
+        # optional = tf.random.uniform([len(x)], 0, 1, dtype=tf.int32)
+        # rad = ((tf.cast(optional, tf.float32) * 345.) + deg) * (math.pi / 180)
+        # x = tfa.image.rotate(x, rad, fill_mode="nearest")
+        # if optional == 1:
+        x = self.random_zoomout(x)
         return x.numpy()[0,:,:,0]
 
     def data_aug_neg(self, x):

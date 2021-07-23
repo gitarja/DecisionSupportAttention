@@ -11,8 +11,10 @@ import random
 from scipy.stats import pearsonr
 
 
-def knn_class(q_logits, labels, ref_logits, ref_labels):
-    acc = kNN(q_logits, labels, ref_logits, ref_labels, ref_num=1)
+def knn_class(q_logits, labels, ref_logits, shots=5):
+    N, D = ref_logits.shape
+    ref_logits = tf.reduce_mean(tf.reshape(ref_logits, (len(labels), shots, D)), 1)
+    acc = kNN(q_logits, labels, ref_logits, labels, ref_num=1)
     return acc
 
 def metric_class(q_logits, labels, ref_logits, ref_labels, deep_metric, ref_num=5):
@@ -41,7 +43,7 @@ def correlation_class(q_logits, labels, ref_logits, ref_labels):
 
 
 #checkpoint
-checkpoint_path = "D:\\usr\\pras\\result\\Siamese\\OmniGlot\\20210722-121137_double\\model\\"
+checkpoint_path = "/mnt/data1/users/pras/result/Siamese/OmniGlot/20210722-210254_double/model/"
 correlation = False
 #model
 model = FewShotModel(filters=64, z_dim=64)
@@ -58,7 +60,7 @@ test_dataset = Dataset(mode="test")
 shots = 5
 
 
-random.seed(2)
+random.seed(2021)
 for way in [5]:
     acc_avg = []
     for i in range(1000):
@@ -70,8 +72,10 @@ for way in [5]:
         if correlation:
             acc = correlation_class(q_logits, labels, ref_logits, ref_labels)
         else:
-            acc = euclidianMetric(q_logits, ref_logits, labels, ref_num=shots)
-            # acc = knn_class(q_logits, labels, ref_logits, ref_labels)
+            # acc = euclidianMetric(q_logits, ref_logits, labels, ref_num=shots)
+            acc = knn_class(q_logits, labels, ref_logits, shots)
+            if np.sum(acc) != 5:
+                print("wrong")
             # acc = metric_class(q_logits, labels, ref_logits, ref_labels, deep_metric, ref_num=shots)
 
             # dist = cosineSimilarity(val_logits, ref_logits, ref_num=5)

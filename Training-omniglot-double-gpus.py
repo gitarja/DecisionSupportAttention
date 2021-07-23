@@ -17,7 +17,8 @@ import os
 os.environ["TF_XLA_FLAGS"] = "--tf_xla_enable_xla_devices"
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
 os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2"
-
+random.seed(2021)  # set seed
+tf.random.set_seed(2021)
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
@@ -47,15 +48,16 @@ if __name__ == '__main__':
     strategy = tf.distribute.MirroredStrategy(cross_device_ops=cross_tower_ops)
 
 
-    random.seed(1)  # set seed
-    train_dataset = Dataset(mode="train_val", val_frac=0.05)
+
+    train_dataset = Dataset(mode="train")
+    test_dataset = Dataset(mode="test")
 
     # training setting
-    eval_interval = 5
+    eval_interval = 1
     train_buffer = 512
-    batch_size = 200
+    batch_size = 256
     ALL_BATCH_SIZE = batch_size * strategy.num_replicas_in_sync
-    val_buffer = 100
+    val_buffer = 500
     ref_num = 5
     val_loss_th = 1e+3
     shots=20
@@ -66,7 +68,7 @@ if __name__ == '__main__':
     lr_siamese = 1e-3
 
     # early stopping
-    early_th = 10
+    early_th = 100
     early_idx = 0
 
     # siamese and discriminator hyperparameter values
@@ -74,10 +76,10 @@ if __name__ == '__main__':
 
     # tensor board
     log_dir = TENSOR_BOARD_PATH + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double"
-    checkpoint_path = TENSOR_BOARD_PATH + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double" + "\\model"
+    checkpoint_path = TENSOR_BOARD_PATH + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double" + "/model"
 
-    train_log_dir = log_dir + "\\train"
-    test_log_dir = log_dir + "\\test"
+    train_log_dir = log_dir + "/train"
+    test_log_dir = log_dir + "/test"
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
@@ -99,7 +101,7 @@ if __name__ == '__main__':
             decay_steps=1000,
             decay_rate=0.96,
             staircase=True)
-        siamese_optimizer = tfa.optimizers.LAMB(learning_rate=lr_schedule)
+        siamese_optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
 
         #metrics
         # train
@@ -138,8 +140,8 @@ if __name__ == '__main__':
                     ap_logits = model(ap, training=True)
                     an_logits = model(an, training=True)
 
-                pp_logits = model.forward_pos(pp, training=True)
-                pn_logits = model.forward_pos(pn, training=True)
+                pp_logits = model(pp, training=True)
+                pn_logits = model(pn, training=True)
 
                 # positive_dist = disc_model([ap_logits, pp_logits])
                 # negative_dist = disc_model([an_logits, pn_logits])
@@ -197,9 +199,9 @@ if __name__ == '__main__':
 
 
         # validation dataset
-        val_dataset = train_dataset.get_mini_offline_batches(val_buffer,
+        val_dataset = train_dataset.get_mini_pairoffline_batches(val_buffer,
                                                              batch_size, shots=shots,
-                                                             validation=True,
+                                                             validation=False,
                                                              )
 
         for epoch in range(epochs):
@@ -224,7 +226,6 @@ if __name__ == '__main__':
                     loss_train.result().numpy(), loss_test.result().numpy()))  # print train and val losses
 
                 val_loss = loss_test.result().numpy()
-
                 if (val_loss_th > val_loss):
                     val_loss_th = val_loss
                     manager.save()
