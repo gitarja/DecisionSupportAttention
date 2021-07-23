@@ -17,8 +17,39 @@ def l2_dis(x1, x2):
 def log_cosh_dis(x1, x2):
     return tf.reduce_sum(tf.math.log(tf.math.cosh(x1 - x2)), 1)
 
+def squared_dist(A):
+    expanded_a = tf.expand_dims(A, 1)
+    expanded_b = tf.expand_dims(A, 0)
+    distances = tf.reduce_sum(tf.math.squared_difference(expanded_a, expanded_b), 2)
+    return distances
 
 
+class CentroidTriplet():
+
+    def __init__(self, margin=1., n_class=5, n_shots=5):
+        super(CentroidTriplet, self).__init__()
+        self.margin = margin
+        self.n_class = n_class
+        self.n_shots = n_shots
+
+
+    def __call__(self, embed):
+        embed = ops.convert_to_tensor_v2(embed, name="anchor_positive")
+        # comver tensor
+        embed = tf.cast(embed, tf.float32)
+        N, D = embed.shape
+        res_embed = tf.reshape(embed, (self.n_class, self.n_shots, D))
+
+        centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
+
+        dist_to_cen = tf.reduce_sum(tf.square(res_embed - centroids), 1)
+
+        cen_to_cen = tf.square(self.margin - off_diagonal(squared_dist(tf.squeeze(centroids))))
+
+        triplet_loss = tf.reduce_mean(dist_to_cen) + tf.reduce_mean(cen_to_cen)
+
+
+        return triplet_loss
 
 class DoubleTriplet():
 
@@ -71,78 +102,7 @@ class DoubleTriplet():
         return triplet_loss
 
 
-class DoubleTripletSoft():
 
-    def __init__(self, squared=False):
-        super(DoubleTripletSoft, self).__init__()
-        self.squared = squared
-
-
-    def __call__(self, positive_dis, negative_dis, pos_neg_dis):
-        pos = ops.convert_to_tensor_v2(positive_dis, name="anchor_positive")
-        neg = ops.convert_to_tensor_v2(negative_dis, name="pair_positive")
-        pos_neg = ops.convert_to_tensor_v2(pos_neg_dis, name="anchor_negative")
-
-        # comver tensor
-        pos = tf.cast(pos, tf.float32)
-        neg = tf.cast(neg, tf.float32)
-        pos_neg_dist = tf.cast(pos_neg, tf.float32)
-        pos_dist = (pos + neg) / 2.
-
-        # pos_loss = tf.losses.binary_crossentropy(tf.zeros_like(pos_dist), pos_dist, from_logits=False)
-        # pos_neg_loss = tf.losses.binary_crossentropy(tf.ones_like(pos_neg_dist), pos_neg_dist, from_logits=False)
-        #
-        # triplet_loss = (pos_loss + pos_neg_loss)
-
-        triplet_loss = tf.square(tf.maximum(0.0, 1. - pos_dist)) + tf.square(pos_neg_dist)
-
-
-        return triplet_loss
-
-
-class TripletBarlow():
-
-    def __init__(self, margin=1.,alpha=1e-1):
-        super(TripletBarlow, self).__init__()
-        self.margin = margin
-        self.alpha = alpha
-
-
-    def __call__(self, anchor_positive, pair_positive, anchor_negative, pair_negative):
-        ap = ops.convert_to_tensor_v2(anchor_positive, name="anchor_positive")
-        pp = ops.convert_to_tensor_v2(pair_positive, name="pair_positive")
-        an = ops.convert_to_tensor_v2(anchor_negative, name="anchor_negative")
-        pn = ops.convert_to_tensor_v2(pair_negative, name="pair_negative")
-
-        # comver tensor
-        ap = tf.cast(ap, tf.float32)
-        pp = tf.cast(pp, tf.float32)
-        an = tf.cast(an, tf.float32)
-        pn = tf.cast(pn, tf.float32)
-
-        # normalize data
-        N,D = ap.shape
-        ap_norm = normalize(ap)
-        pp_norm = normalize(pp)
-        an_norm = normalize(an)
-        pn_norm = normalize(pn)
-        I= tf.eye(D)
-
-        pos_c = (tf.transpose(ap_norm) @ pp_norm) / N
-        neg_c = (tf.transpose(an_norm) @ pn_norm) / N
-        pos_neg = (tf.transpose((an_norm + pp_norm) / 2.) @ (an_norm + pn_norm)/2) / N
-
-        c_diff = tf.square(pos_c - I) + tf.square(neg_c - I) + tf.square(pos_neg)
-        c_diff = tf.where(I != 1, c_diff * self.alpha, c_diff)
-        #
-        # d_pos_neg = tf.reduce_sum(tf.square(((ap + pp) / 2.) - ((an + pn) / 2.)),
-        #                           1)  # distance between positive and negative anchor
-        #
-        # push_away = d_pos_neg
-        #
-        # triplet_loss = tf.square(tf.maximum(0.0, self.margin - (push_away)))
-
-        return  tf.reduce_sum(c_diff)
 
 
 class TripletOffline():
@@ -179,30 +139,6 @@ class TripletOffline():
 
         return triplet_loss
 
-
-class EntropyDoubleAnchor(K.losses.Loss):
-
-    def __init__(self, margin=1., soft=False, reduction=tf.keras.losses.Reduction.AUTO, name='EntropyDoubleAnchorLoss'):
-        super().__init__(reduction=reduction, name=name)
-        self.margin = margin
-        self.soft = soft
-
-    def call(self, y_true, y_pred):
-        '''
-        :param y_true: pull in (d_pos_neg + d_pos_neg_pair)
-        :param y_pred: (d_neg + d_pos)
-        :return:
-        '''
-        y_pull_in = ops.convert_to_tensor_v2(y_true, name="y_pull_in")
-        y_push_away = ops.convert_to_tensor_v2(y_pred, name="y_push_away")
-
-        y_pull_in = tf.cast(y_pull_in, tf.float32)
-        y_push_away = tf.cast(y_push_away, tf.float32)
-
-        if self.soft:
-            return tf.reduce_mean(tf.math.log1p(tf.math.exp(self.margin + y_push_away - y_pull_in)), -1)
-        else:
-            return tf.reduce_mean(tf.math.maximum(self.margin + y_pull_in - y_push_away, 0), -1)
 
 class  DoubleBarlow:
         def __init__(self, alpha=5e-3,

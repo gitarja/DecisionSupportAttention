@@ -9,7 +9,7 @@ import numpy as np
 import datetime
 from Omniglot.Conf import TENSOR_BOARD_PATH
 import argparse
-from Utils.CustomLoss import DoubleTriplet
+from Utils.CustomLoss import CentroidTriplet
 
 import random
 import os
@@ -54,10 +54,10 @@ if __name__ == '__main__':
 
     # training setting
     eval_interval = 1
-    train_buffer = 512
+    train_class = 5
     batch_size = 256
     ALL_BATCH_SIZE = batch_size * strategy.num_replicas_in_sync
-    val_buffer = 500
+    val_class = train_class
     ref_num = 5
     val_loss_th = 1e+3
     shots=20
@@ -84,8 +84,7 @@ if __name__ == '__main__':
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    triplet_loss = DoubleTriplet(margin=args.margin, soft=args.soft, squared=args.squared)
-
+    triplet_loss = CentroidTriplet(n_class=train_class, n_shots=shots)
 
     with strategy.scope():
         model = FewShotModel(filters=64, z_dim=z_dim)
@@ -111,38 +110,19 @@ if __name__ == '__main__':
 
 
     with strategy.scope():
-
-        def compute_triplet_loss(ap, pp, an, pn, global_batch_size):
-
-            per_example_loss = triplet_loss(ap, pp, an, pn)
-            return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
+        def compute_triplet_loss(embd):
+            loss = triplet_loss(embd)
+            return loss
 
     with strategy.scope():
 
 
         def train_step(inputs, GLOBAL_BATCH_SIZE=0):
-            ap, pp,  an, pn = inputs
 
             with tf.GradientTape() as siamese_tape, tf.GradientTape():
-                if args.project:
-                    ap_logits = model.forward_pos(ap, training=True)
-                    an_logits = model.forward_pos(an, training=True)
-                else:
-                    ap_logits = model(ap, training=True)
-                    an_logits = model(an, training=True)
-
-                pp_logits = model(pp, training=True)
-                pn_logits = model(pn, training=True)
-
-                # positive_dist = disc_model([ap_logits, pp_logits])
-                # negative_dist = disc_model([an_logits, pn_logits])
-                # pos_neg_dist = disc_model([(ap_logits+pp_logits) / 2., (an_logits + pn_logits) / 2.])
-                #
-                # embd_loss = compute_triplet_soft_loss(positive_dist, negative_dist, pos_neg_dist, GLOBAL_BATCH_SIZE)
-
-                embd_loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits, GLOBAL_BATCH_SIZE)  # triplet loss
-                # embd_loss = compute_triplet_barlow_loss(ap_logits, pp_logits, an_logits, pn_logits)
-                # Use the gradient tape to automatically retrieve
+                embeddings = model(inputs, training=True)
+                embd_loss = compute_triplet_loss(embeddings)  # triplet loss
+                           # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
             siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
             siamese_optimizer.apply_gradients(zip(siamese_grads, model.trainable_weights))
@@ -151,20 +131,9 @@ if __name__ == '__main__':
 
 
         def val_step(inputs, GLOBAL_BATCH_SIZE=0):
-            ap, pp, an, pn = inputs
-            ap_logits = model(ap, training=False)
-            pp_logits = model(pp, training=False)
-            an_logits = model(an, training=False)
-            pn_logits = model(pn, training=False)
 
-            # positive_dist = disc_model([ap_logits, pp_logits])
-            # negative_dist = disc_model([an_logits, pn_logits])
-            # pos_neg_dist = disc_model([(ap_logits + pp_logits) / 2., (an_logits + pn_logits) / 2.])
-            #
-            # loss = compute_triplet_soft_loss(positive_dist, negative_dist, pos_neg_dist, GLOBAL_BATCH_SIZE)
-
-            loss = compute_triplet_loss(ap_logits, pp_logits, an_logits, pn_logits,
-                                                 GLOBAL_BATCH_SIZE)  # triplet loss
+            embeddings = model(inputs, training=False)
+            loss = compute_triplet_loss(embeddings)  # triplet loss
             # loss = compute_triplet_barlow_loss(ap_logits, pp_logits, an_logits, pn_logits)
 
             loss_test(loss)
@@ -190,25 +159,23 @@ if __name__ == '__main__':
 
 
         # validation dataset
-        val_dataset = train_dataset.get_mini_pairoffline_batches(val_buffer,
-                                                             batch_size, shots=shots,
-                                                             validation=False,
-                                                             )
+
 
         for epoch in range(epochs):
             # dataset
-            mini_dataset = train_dataset.get_mini_pairoffline_batches(train_buffer,
-                                                                  batch_size,shots=shots,
-                                                                  validation=False,
+            train_inputs = train_dataset.get_mini_offline_batches(train_class,
+                                                                  shots=shots,
+
                                                                   )
 
-            for ap, pp,  an, pn in mini_dataset:
-                distributed_train_step([ap, pp,  an, pn], ALL_BATCH_SIZE)
+
+            distributed_train_step(train_inputs, ALL_BATCH_SIZE)
 
             if (epoch + 1) % eval_interval == 0:
-
-                for ap, pp,  an, pn  in val_dataset:
-                    distributed_test_step([ap, pp,  an, pn], ALL_BATCH_SIZE)
+                val_inputs = test_dataset.get_mini_offline_batches(val_class,
+                                                                    shots=shots,
+                                                                    )
+                distributed_test_step(val_inputs, ALL_BATCH_SIZE)
                 with train_summary_writer.as_default():
                     tf.summary.scalar('loss', loss_train.result().numpy(), step=epoch)
                 with test_summary_writer.as_default():
