@@ -22,11 +22,11 @@ tf.random.set_seed(2021)
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--margin', type=float, default=1.)
-    parser.add_argument('--soft', type=bool, default=False)
-    parser.add_argument('--project', type=bool, default=False)
-    parser.add_argument('--squared', type=bool, default=False)
+    parser.add_argument('--margin', type=float, default=0.5)
+    parser.add_argument('--margin_2', type=float, default=1.5)
+    parser.add_argument('--n_class', type=int, default=100)
     parser.add_argument('--z_dim', type=int, default=64)
+    parser.add_argument('--mean', type=bool, default=False)
 
 
     args = parser.parse_args()
@@ -47,23 +47,24 @@ if __name__ == '__main__':
     cross_tower_ops = tf.distribute.HierarchicalCopyAllReduce(num_packs=3)
     strategy = tf.distribute.MirroredStrategy(cross_device_ops=cross_tower_ops)
 
+    print(args.n_class)
 
+    train_dataset = Dataset(mode="train_val", val_frac=0.05)
 
-    train_dataset = Dataset(mode="train")
-    test_dataset = Dataset(mode="test")
 
     # training setting
-    eval_interval = 1
-    train_class = 5
+    eval_interval = 15
+    train_class = args.n_class
+
     batch_size = 256
     ALL_BATCH_SIZE = batch_size * strategy.num_replicas_in_sync
-    val_class = train_class
+    val_class = len(train_dataset.val_labels)
     ref_num = 5
     val_loss_th = 1e+3
     shots=20
 
     # training setting
-    epochs = 500000
+    epochs = 5000
     lr = 1e-3
     lr_siamese = 1e-3
 
@@ -84,7 +85,7 @@ if __name__ == '__main__':
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    triplet_loss = CentroidTriplet(n_class=train_class, n_shots=shots)
+    triplet_loss = CentroidTriplet(margin=args.margin, margin_2=args.margin_2,  n_shots=shots, mean=args.mean)
 
     with strategy.scope():
         model = FewShotModel(filters=64, z_dim=z_dim)
@@ -96,10 +97,10 @@ if __name__ == '__main__':
         # optimizer
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             lr,
-            decay_steps=1000,
-            decay_rate=0.96,
+            decay_steps=500,
+            decay_rate=0.8,
             staircase=True)
-        siamese_optimizer = tf.keras.optimizers.Adam(learning_rate=lr)
+        siamese_optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
 
         #metrics
         # train
@@ -110,9 +111,10 @@ if __name__ == '__main__':
 
 
     with strategy.scope():
-        def compute_triplet_loss(embd):
-            loss = triplet_loss(embd)
-            return loss
+        def compute_triplet_loss(embd, n_class, global_batch_size):
+            per_example_loss = triplet_loss(embd, n_class)
+            return per_example_loss
+            # return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
 
     with strategy.scope():
 
@@ -121,7 +123,7 @@ if __name__ == '__main__':
 
             with tf.GradientTape() as siamese_tape, tf.GradientTape():
                 embeddings = model(inputs, training=True)
-                embd_loss = compute_triplet_loss(embeddings)  # triplet loss
+                embd_loss = compute_triplet_loss(embeddings, train_class, train_class * shots)  # triplet loss
                            # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
             siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
@@ -133,7 +135,7 @@ if __name__ == '__main__':
         def val_step(inputs, GLOBAL_BATCH_SIZE=0):
 
             embeddings = model(inputs, training=False)
-            loss = compute_triplet_loss(embeddings)  # triplet loss
+            loss = compute_triplet_loss(embeddings, val_class, val_class * shots)  # triplet loss
             # loss = compute_triplet_barlow_loss(ap_logits, pp_logits, an_logits, pn_logits)
 
             loss_test(loss)
@@ -159,12 +161,16 @@ if __name__ == '__main__':
 
 
         # validation dataset
-
+        val_inputs = train_dataset.get_mini_offline_batches(val_class,
+                                                           shots=shots,
+                                                            validation=True
+                                                           )
 
         for epoch in range(epochs):
             # dataset
             train_inputs = train_dataset.get_mini_offline_batches(train_class,
                                                                   shots=shots,
+                                                                  validation=False
 
                                                                   )
 
@@ -172,9 +178,7 @@ if __name__ == '__main__':
             distributed_train_step(train_inputs, ALL_BATCH_SIZE)
 
             if (epoch + 1) % eval_interval == 0:
-                val_inputs = test_dataset.get_mini_offline_batches(val_class,
-                                                                    shots=shots,
-                                                                    )
+
                 distributed_test_step(val_inputs, ALL_BATCH_SIZE)
                 with train_summary_writer.as_default():
                     tf.summary.scalar('loss', loss_train.result().numpy(), step=epoch)
@@ -192,5 +196,7 @@ if __name__ == '__main__':
                 else:
                     early_idx += 1
                 reset_metric()
-                if early_idx == early_th:
-                    break
+                # if early_idx == early_th:
+                #     break
+
+

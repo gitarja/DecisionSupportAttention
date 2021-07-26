@@ -1,7 +1,7 @@
 import tensorflow as tf
 import tensorflow.keras as K
 from tensorflow.python.framework import ops
-
+import tensorflow_probability as tfp
 
 def off_diagonal(x):
     n = tf.shape(x)[0]
@@ -17,6 +17,10 @@ def l2_dis(x1, x2):
 def log_cosh_dis(x1, x2):
     return tf.reduce_sum(tf.math.log(tf.math.cosh(x1 - x2)), 1)
 
+def get_inner_dist(x, s, i):
+    loss = x[(i)*s:(i+1)*s]
+    return
+
 def squared_dist(A):
     expanded_a = tf.expand_dims(A, 1)
     expanded_b = tf.expand_dims(A, 0)
@@ -26,27 +30,55 @@ def squared_dist(A):
 
 class CentroidTriplet():
 
-    def __init__(self, margin=1., n_class=5, n_shots=5):
+    def __init__(self, margin=0.5, margin_2 = 1., n_shots=5, mean=False):
         super(CentroidTriplet, self).__init__()
         self.margin = margin
-        self.n_class = n_class
         self.n_shots = n_shots
+        self.margin_2 = margin_2
+        self.mean = mean
 
 
-    def __call__(self, embed):
-        embed = ops.convert_to_tensor_v2(embed, name="anchor_positive")
+    def __call__(self, embed, n_class=5):
+        embed = ops.convert_to_tensor_v2(embed,  name="anchor_positive")
         # comver tensor
         embed = tf.cast(embed, tf.float32)
         N, D = embed.shape
-        res_embed = tf.reshape(embed, (self.n_class, self.n_shots, D))
+        res_embed = tf.reshape(embed, (n_class, self.n_shots, D))
 
-        centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
+        # centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
+        if self.mean:
+            centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
+            dist_to_cens = tf.reshape(tf.reduce_sum(tf.square(tf.expand_dims(res_embed, 1) - centroids), -1),
+                                      (n_class, n_class * self.n_shots))
+        else:
+            centroids = tfp.stats.percentile(res_embed, 50.0, 1, keepdims=True)
+            dist_to_cens = tf.reshape(tf.reduce_sum(tf.square(tf.expand_dims(res_embed, 1) - centroids), -1),
+                                      (n_class, n_class * self.n_shots))
 
-        dist_to_cen = tf.reduce_sum(tf.square(res_embed - centroids), 1)
+        # dist_to_cen = tf.square(tf.maximum(0.0, self.margin2 - tf.reduce_sum(tf.square(res_embed - centroids), -1)))
+        # cen_to_cen = tf.square(tf.maximum(0.0, self.margin - off_diagonal(squared_dist(tf.squeeze(centroids)))))
+        # triplet_loss = tf.reduce_mean(dist_to_cen) + tf.reduce_mean(cen_to_cen)
 
-        cen_to_cen = tf.square(self.margin - off_diagonal(squared_dist(tf.squeeze(centroids))))
 
-        triplet_loss = tf.reduce_mean(dist_to_cen) + tf.reduce_mean(cen_to_cen)
+        d = tf.reshape(tf.repeat(tf.eye(n_class), self.n_shots), (n_class, n_class * self.n_shots))
+        inner_dist  = tf.reshape(tf.boolean_mask(dist_to_cens, d==1), (N, -1))
+        extra_dist = tf.reduce_min(tf.reshape(tf.boolean_mask(dist_to_cens, d == 0), (n_class, n_class-1, self.n_shots)), axis=1)
+        triplet_loss = tf.maximum(0., inner_dist - self.margin) + tf.reshape( tf.maximum(0., self.margin_2 - extra_dist), (N, -1))
+
+        # dis_diag = tf.math.maximum(0., tf.reshape(tf.linalg.diag_part(dist_to_cens), (n_class, 1)) - self.margin2)
+        # off_diag = tf.math.maximum(0., self.margin - tf.reshape(off_diagonal(dist_to_cens), (n_class, n_class-1)))
+        #
+        # triplet_loss =  tf.reduce_mean(dis_diag + off_diag)
+
+
+
+        # dist_to_cen = tf.reduce_mean(tf.reduce_sum(tf.square(res_embed - centroids), -1), -1)
+        # cen_to_cen = off_diagonal(squared_dist(tf.squeeze(centroids)))
+        # res_cen_to_cen = tf.reduce_mean(tf.reshape(cen_to_cen, (self.n_class, self.n_class-1)), 1)
+        # triplet_loss = tf.reduce_mean(tf.maximum(0., self.margin + dist_to_cen - res_cen_to_cen))
+
+
+
 
 
         return triplet_loss
@@ -232,11 +264,8 @@ class BarlowTwins(K.losses.Loss):
 if __name__ == '__main__':
     import numpy as np
 
-    a = np.random.normal(size=(5, 3))
+    a = tf.transpose(tf.Variable([[1, 1, 1, 1, 2,2,2,2, 3,3,3,3]]))
+    # a =tf.random.normal((12, 1))
+    loss = CentroidTriplet(n_shots=4)
+    loss(a, n_class=3)
 
-    b = np.random.normal(size=(5, 3))
-
-    # cl = EntropyDoubleAnchor(soft=True, margin=1., reduction=tf.keras.losses.Reduction.NONE)
-    cl = DoubleBarlow()
-
-    print(cl(a, a, b))

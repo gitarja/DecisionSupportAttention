@@ -14,35 +14,42 @@ class Dataset:
     def __init__(self, mode="training", val_frac=0.1):
 
         if mode=="train" or mode=="train_val":
-            with open(DATASET_PATH + "dataTrain.pickle", 'rb') as f:
+            with open(DATASET_PATH + "data_train.pickle", 'rb') as f:
                 ds = pickle.load(f)
         elif mode=="test":
-            with open(DATASET_PATH + "dataTest.pickle", 'rb') as f:
+            with open(DATASET_PATH + "data_test.pickle", 'rb') as f:
                 ds = pickle.load(f)
 
         self.data = {}
 
         def extraction(image, degree=0):
-            image = tf.image.resize(tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1), [28, 28])
+            image = tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1)
             if degree!=0:
                 image = tf.image.rot90(image, k=degree)
             return image
-        if mode == "test":
-            for i in range(ds.shape[0]):
-                for l in range(ds[i].shape[0]):
-                    label = str(i)
-                    if label not in self.data:
-                        self.data[label] = []
-                    self.data[label].append(extraction(ds[i, l, :, :]))
-        else:
-            label = 0
-            for i in range(ds.shape[0]):
-                for j in range(1, 4, 1):
-                    for l in range(ds[i].shape[0]):
+
+        for i in range(ds.shape[0]):
+            for l in range(ds[i].shape[0]):
+                        label = str(i)
                         if label not in self.data:
                             self.data[label] = []
-                        self.data[label].append(extraction(ds[i, l, :, :], j))
-                    label+=1
+                        self.data[label].append(extraction(ds[i, l, :, :]))
+        # if mode == "test":
+        #     for i in range(ds.shape[0]):
+        #         for l in range(ds[i].shape[0]):
+        #             label = str(i)
+        #             if label not in self.data:
+        #                 self.data[label] = []
+        #             self.data[label].append(extraction(ds[i, l, :, :]))
+        # else:
+        # label = 0
+        # for i in range(ds.shape[0]):
+        #     for j in range(1, 4, 1):
+        #         for l in range(ds[i].shape[0]):
+        #             if label not in self.data:
+        #                 self.data[label] = []
+        #             self.data[label].append(extraction(ds[i, l, :, :], j))
+        #         label += 1
 
         self.labels = list(self.data.keys())
         if mode == "train_val":
@@ -56,7 +63,10 @@ class Dataset:
 
     def get_mini_offline_batches(self, n_class, shots=2,  validation=False):
         anchor_positive = np.zeros(shape=(n_class * shots, 28, 28, 1))
-        label_subsets = random.sample(n_class, k=2)
+        labels = self.labels
+        if validation:
+            labels = self.val_labels
+        label_subsets = random.sample(labels, k=n_class)
         for i in range(len(label_subsets)):
             positive_to_split = random.sample(
                 self.data[label_subsets[i]], k=shots)
