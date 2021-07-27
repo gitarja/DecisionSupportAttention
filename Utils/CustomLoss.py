@@ -30,11 +30,11 @@ def squared_dist(A):
 
 class CentroidTriplet():
 
-    def __init__(self, margin=0.5, margin_2 = 1., n_shots=5, mean=False):
+    def __init__(self, margin=0.5, soft=False, n_shots=5, mean=False):
         super(CentroidTriplet, self).__init__()
         self.margin = margin
         self.n_shots = n_shots
-        self.margin_2 = margin_2
+        self.soft = soft
         self.mean = mean
 
 
@@ -55,29 +55,14 @@ class CentroidTriplet():
             dist_to_cens = tf.reshape(tf.reduce_sum(tf.square(tf.expand_dims(res_embed, 1) - centroids), -1),
                                       (n_class, n_class * self.n_shots))
 
-        # dist_to_cen = tf.square(tf.maximum(0.0, self.margin2 - tf.reduce_sum(tf.square(res_embed - centroids), -1)))
-        # cen_to_cen = tf.square(tf.maximum(0.0, self.margin - off_diagonal(squared_dist(tf.squeeze(centroids)))))
-        # triplet_loss = tf.reduce_mean(dist_to_cen) + tf.reduce_mean(cen_to_cen)
-
-
         d = tf.reshape(tf.repeat(tf.eye(n_class), self.n_shots), (n_class, n_class * self.n_shots))
         inner_dist  = tf.reshape(tf.boolean_mask(dist_to_cens, d==1), (N, -1))
         extra_dist = tf.reduce_min(tf.reshape(tf.boolean_mask(dist_to_cens, d == 0), (n_class, n_class-1, self.n_shots)), axis=1)
-        triplet_loss = tf.maximum(0., inner_dist - self.margin) + tf.reshape( tf.maximum(0., self.margin_2 - extra_dist), (N, -1))
-
-        # dis_diag = tf.math.maximum(0., tf.reshape(tf.linalg.diag_part(dist_to_cens), (n_class, 1)) - self.margin2)
-        # off_diag = tf.math.maximum(0., self.margin - tf.reshape(off_diagonal(dist_to_cens), (n_class, n_class-1)))
-        #
-        # triplet_loss =  tf.reduce_mean(dis_diag + off_diag)
+        triplet_loss = tf.maximum(0., self.margin + inner_dist - tf.reshape(extra_dist, (N, -1)))
 
 
-
-        # dist_to_cen = tf.reduce_mean(tf.reduce_sum(tf.square(res_embed - centroids), -1), -1)
-        # cen_to_cen = off_diagonal(squared_dist(tf.squeeze(centroids)))
-        # res_cen_to_cen = tf.reduce_mean(tf.reshape(cen_to_cen, (self.n_class, self.n_class-1)), 1)
-        # triplet_loss = tf.reduce_mean(tf.maximum(0., self.margin + dist_to_cen - res_cen_to_cen))
-
-
+        if self.soft:
+            triplet_loss = tf.square(triplet_loss)
 
 
 
@@ -264,8 +249,8 @@ class BarlowTwins(K.losses.Loss):
 if __name__ == '__main__':
     import numpy as np
 
-    a = tf.transpose(tf.Variable([[1, 1, 1, 1, 2,2,2,2, 3,3,3,3]]))
-    # a =tf.random.normal((12, 1))
+    # a = tf.transpose(tf.Variable([[1, 1, 1, 1, 2,2,2,2, 3,3,3,3]]))
+    a =tf.random.normal((12, 1))
     loss = CentroidTriplet(n_shots=4)
     loss(a, n_class=3)
 

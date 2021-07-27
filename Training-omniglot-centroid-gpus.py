@@ -23,7 +23,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--margin', type=float, default=0.5)
-    parser.add_argument('--margin_2', type=float, default=1.5)
+    parser.add_argument('--soft', type=bool, default=False)
     parser.add_argument('--n_class', type=int, default=100)
     parser.add_argument('--z_dim', type=int, default=64)
     parser.add_argument('--mean', type=bool, default=False)
@@ -85,7 +85,7 @@ if __name__ == '__main__':
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    triplet_loss = CentroidTriplet(margin=args.margin, margin_2=args.margin_2,  n_shots=shots, mean=args.mean)
+    triplet_loss = CentroidTriplet(margin=args.margin, soft=args.soft,  n_shots=shots, mean=args.mean)
 
     with strategy.scope():
         model = FewShotModel(filters=64, z_dim=z_dim)
@@ -97,7 +97,7 @@ if __name__ == '__main__':
         # optimizer
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             lr,
-            decay_steps=500,
+            decay_steps=1000,
             decay_rate=0.8,
             staircase=True)
         siamese_optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
@@ -113,8 +113,7 @@ if __name__ == '__main__':
     with strategy.scope():
         def compute_triplet_loss(embd, n_class, global_batch_size):
             per_example_loss = triplet_loss(embd, n_class)
-            return per_example_loss
-            # return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
+            return tf.nn.compute_average_loss(per_example_loss)
 
     with strategy.scope():
 
