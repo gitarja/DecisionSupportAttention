@@ -39,7 +39,7 @@ class CentroidTriplet():
 
 
     def __call__(self, embed, n_class=5):
-        embed = ops.convert_to_tensor_v2(embed,  name="anchor_positive")
+        embed = ops.convert_to_tensor_v2(embed,  name="embed")
         # comver tensor
         embed = tf.cast(embed, tf.float32)
         N, D = embed.shape
