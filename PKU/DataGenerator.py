@@ -4,7 +4,8 @@ import random
 import matplotlib.pyplot as plt
 import pickle
 from PKU.Conf import DATASET_PATH
-from tensorflow.keras.applications import resnet50
+from tensorflow.keras.applications import inception_v3, vgg16
+
 
 class Dataset:
 
@@ -14,27 +15,36 @@ class Dataset:
         :param val_frac:
         Note: data format (200, 3, 288, 144, 3) -> (number of subjects, samples, image_dim) -> samples (sktech1, sketch2, color_img1, color_img2, color_img3, color_img4)
         '''
-        if mode=="training" or mode=="train_val":
+        if mode == "training" or mode == "train_val":
             with open(DATASET_PATH + "dataTrain.pkl", 'rb') as f:
                 ds = pickle.load(f)
-        elif mode=="test":
+        elif mode == "test":
             with open(DATASET_PATH + "dataTest.pkl", 'rb') as f:
                 ds = pickle.load(f)
 
         self.data = {}
         self.sketch = {}
 
-        def extraction(image, idx=1):
-            image = tf.image.convert_image_dtype(image, tf.float32)
-            # image = resnet50.preprocess_input(image)
+        sketch_mean = np.array([220.3052445, 219.7853072, 219.32116368])
+        sketch_std = np.array([55.41796559, 56.29420328, 57.02388277])
+        rgb_mean = np.array([112.69836251, 110.19273992, 104.90438247])
+        rgb_std = np.array([61.46471997, 61.41596831, 62.20044001])
+        def extraction(image, sketch=False):
+            image = tf.cast(image, tf.float32)
+            if sketch:
+                image = (image - sketch_mean) / sketch_std
+            else:
+                image = (image - rgb_mean) / rgb_std
+
             return image
 
         for i in range(ds.shape[0]):
+
             for k in range(2):
                 label = str(i)
                 if label not in self.sketch:
                     self.sketch[label] = []
-                self.sketch[label].append(extraction(ds[i, k, :, :]))
+                self.sketch[label].append(extraction(ds[i, k, :, :], True))
             for l in range(2, ds[i].shape[0]):
                 label = str(i)
                 if label not in self.data:
@@ -45,16 +55,15 @@ class Dataset:
         if mode == "train_val":
             random.seed(1)
             random.shuffle(self.labels)
-            self.val_labels = self.labels[:int(len(self.labels) *val_frac)] #take 10% classes as validation
-            del self.labels[:int(len(self.labels) *val_frac)]
+            self.val_labels = self.labels[:int(len(self.labels) * val_frac)]  # take 10% classes as validation
+            del self.labels[:int(len(self.labels) * val_frac)]
 
-
-    def get_mini_offline_batches(self, n_class, shots=2,  validation=False):
+    def get_mini_offline_batches(self, n_class, shots=2, validation=False):
         anchor_positive = np.zeros(shape=(n_class * (1 + shots), 288, 144, 3))
-        domain_labels = np.zeros(1+shots)
+        domain_labels = np.zeros(1 + shots)
         domain_labels[0] = 1
         domain_labels = np.tile(domain_labels, n_class)
-        if shots>4:
+        if shots > 4:
             raise ValueError('Shots must be less or equal to 4')
         labels = self.labels
         if validation:
@@ -66,16 +75,36 @@ class Dataset:
             positive_to_split = random.sample(
                 self.data[label_subsets[i]], k=shots)
 
-            #set anchor and pair positives
-            anchor_positive[i*shots, :] =sketch[0]
-            anchor_positive[1 + (i*shots): 1 + ((i+1) * shots)] = positive_to_split
+            # set anchor and pair positives
+            anchor_positive[i * (1 + shots), :] = sketch[0]
+            anchor_positive[1 + (i * (1 + shots)): ((i + 1) * (1 + shots))] = positive_to_split
         domain_labels = np.expand_dims(domain_labels, -1)
         return anchor_positive.astype(np.float32), domain_labels.astype(np.float32)
+
+    def get_mini_sketch_batches(self, n_class, shots=2, validation=False):
+        sketch_positive = np.zeros(shape=(n_class , 288, 144, 3))
+        anchor_positive = np.zeros(shape=(n_class * (shots), 288, 144, 3))
+        if shots > 4:
+            raise ValueError('Shots must be less or equal to 4')
+        labels = self.labels
+        if validation:
+            labels = self.val_labels
+        label_subsets = random.sample(labels, k=n_class)
+        for i in range(len(label_subsets)):
+            sketch = random.sample(
+                self.sketch[label_subsets[i]], k=1)
+            positive_to_split = random.sample(
+                self.data[label_subsets[i]], k=shots)
+
+            # set anchor and pair positives
+            sketch_positive[i, :] = sketch[0]
+            anchor_positive[i * shots: (i + 1) * shots] = positive_to_split
+        return sketch_positive.astype(np.float32), anchor_positive.astype(np.float32)
 
     # def get_train_batches(self):
 
     def get_batches(self, shots, num_classes):
-        random.seed(0)
+
         temp_labels = np.zeros(shape=(num_classes))
         temp_images = np.zeros(shape=(num_classes, 288, 144, 3))
         ref_labels = np.zeros(shape=(num_classes * shots))
@@ -83,33 +112,30 @@ class Dataset:
 
         labels = self.labels
 
+        label_subsets = random.sample(labels, k=num_classes)
+        for class_idx, class_obj in enumerate(label_subsets):
+            temp_labels[class_idx] = class_idx
+            ref_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
 
-        for idx in range(0, len(labels), num_classes):
-            label_subsets = labels[idx:idx+num_classes]
+            # sample images
+            # images_to_split = random.choices(
+            #     self.data[label_subsets[class_idx]], k=shots+1)
+            images_to_split = random.choices(
+                self.data[label_subsets[class_idx]], k=shots)
+            sketch = random.choices(
+                self.sketch[label_subsets[class_idx]], k=1)
+            temp_images[class_idx] = sketch[0]
+            ref_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split
 
-            for class_idx, class_obj in enumerate(label_subsets):
-                temp_labels[class_idx] = class_idx
-                ref_labels[class_idx*shots : (class_idx+1) * shots] = class_idx
-
-                # sample images
-                # images_to_split = random.choices(
-                #     self.data[label_subsets[class_idx]], k=shots+1)
-                images_to_split = random.choices(
-                    self.data[label_subsets[class_idx]], k=shots+1)
-                sketch = random.choices(
-                    self.sketch[label_subsets[class_idx]], k=1)
-                temp_images[class_idx] = sketch
-                ref_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[1:shots+1]
-
-            yield temp_images.astype(np.float32), temp_labels.astype(np.int32), ref_images.astype(np.float32), ref_labels.astype(np.float32)
+        return temp_images.astype(np.float32), temp_labels.astype(np.int32), ref_images.astype(
+            np.float32), ref_labels.astype(np.float32)
 
 
 if __name__ == '__main__':
-
     test_dataset = Dataset(mode="test")
-    test_data = test_dataset.get_batches(shots=3, num_classes=5)
-    train_data, _  = test_dataset.get_mini_offline_batches(n_class=25, shots=4)
-    print(train_data.shape)
+    query, labels, references, ref_labels = test_dataset.get_batches(shots=2, num_classes=5)
+    # train_data, domain_labels = test_dataset.get_mini_sketch_batches(n_class=25, shots=4)
+    print(query.shape)
 
     # for _, data in enumerate(test_data):
     #     print(data)
@@ -130,4 +156,3 @@ if __name__ == '__main__':
     #         axarr[a, b].xaxis.set_visible(False)
     #         axarr[a, b].yaxis.set_visible(False)
     # plt.show()
-

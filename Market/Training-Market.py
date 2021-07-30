@@ -1,18 +1,15 @@
+import tensorflow as tf
 import os.path
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-import tensorflow as tf
-
 tf.keras.backend.set_floatx('float32')
-from PKU.DataGenerator import Dataset
-from NNModels.RGBModel import RGBModel, DomainDiscriminator
-from NNModels.FewShotModel import FewShotModel, FewShotModelSmall
+from Market.DataGenerator import Dataset
+from NNModels.RGBModel import RGBModel
 import tensorflow_addons as tfa
-import numpy as np
 import datetime
-from PKU.Conf import TENSOR_BOARD_PATH
+from Market.Conf import TENSOR_BOARD_PATH
 import argparse
-from Utils.CustomLoss import CentroidTripletSketch
+from Utils.CustomLoss import CentroidTriplet
 
 import random
 import os
@@ -27,8 +24,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--margin', type=float, default=0.5)
     parser.add_argument('--soft', type=bool, default=False)
-    parser.add_argument('--n_class', type=int, default=25)
-    parser.add_argument('--z_dim', type=int, default=64)
+    parser.add_argument('--n_class', type=int, default=100)
+    parser.add_argument('--z_dim', type=int, default=128)
     parser.add_argument('--mean', type=bool, default=False)
 
 
@@ -52,24 +49,22 @@ if __name__ == '__main__':
 
     print(args.n_class)
 
-    train_dataset = Dataset(mode="training", val_frac=0.1)
-    test_dataset =  Dataset(mode="test")
+    train_dataset = Dataset(mode="train_val", val_frac=0.05)
 
 
     # training setting
-    eval_interval = 5
+    eval_interval = 15
     train_class = args.n_class
 
     batch_size = 256
     ALL_BATCH_SIZE = batch_size * strategy.num_replicas_in_sync
-    val_class = len(test_dataset.labels)
-    ref_num = 5
+    val_class = len(train_dataset.val_labels)
     val_loss_th = 1e+3
-    shots=4
+    shots = 5
 
     # training setting
     epochs = 10000
-    lr = 1e-3
+    lr = 5e-4
     lr_siamese = 1e-3
 
     # early stopping
@@ -89,27 +84,22 @@ if __name__ == '__main__':
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    triplet_loss = CentroidTripletSketch(margin=args.margin, soft=args.soft,  n_shots=shots, mean=args.mean) # sketch + shots
-    binary_loss = tf.losses.BinaryCrossentropy(from_logits=True, reduction=tf.keras.losses.Reduction.NONE)
+    triplet_loss = CentroidTriplet(margin=args.margin, soft=args.soft,  n_shots=shots, mean=args.mean)
 
     with strategy.scope():
-        sketch_model = FewShotModelSmall(z_dim=z_dim)
-        rgb_model = FewShotModelSmall(z_dim=z_dim)
-        disc_model = DomainDiscriminator()
+        model = RGBModel(z_dim=z_dim)
 
         # check point
-        checkpoint = tf.train.Checkpoint(step=tf.Variable(1), sketch_model=sketch_model, rgb_model=rgb_model, disc_model=disc_model)
+        checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
 
         manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=early_th)
         # optimizer
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             lr,
-            decay_steps=2000,
+            decay_steps=1000,
             decay_rate=0.8,
             staircase=True)
-        siamese_optimizer = tfa.optimizers.RectifiedAdam(learning_rate=1e-4, total_steps=epochs, min_lr=1e-6, warmup_proportion=0.1)
-        gen_optimizer =  tfa.optimizers.RectifiedAdam(learning_rate=1e-4, total_steps=epochs, min_lr=1e-6, warmup_proportion=0.1)
-        disc_optimizer = tfa.optimizers.RectifiedAdam(learning_rate=1e-4, total_steps=epochs, min_lr=1e-6, warmup_proportion=0.1)
+        siamese_optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
 
 
         #metrics
@@ -121,62 +111,31 @@ if __name__ == '__main__':
 
 
     with strategy.scope():
-        def compute_triplet_loss(sketch, rgbs, n_class):
-            per_example_loss = triplet_loss(sketch, rgbs, n_class)
+        def compute_triplet_loss(embd, n_class, global_batch_size):
+            per_example_loss = triplet_loss(embd, n_class)
             return tf.nn.compute_average_loss(per_example_loss)
-
-        def compute_generator_loss(fake_output, sketch=True):
-            if sketch:
-                y = tf.ones_like(fake_output)
-            else:
-                y = tf.zeros_like(fake_output)
-            per_example_loss = binary_loss(y, fake_output)
-            return tf.nn.compute_average_loss(per_example_loss)
-
-
-        def compute_discriminator_loss(real_output, fake_output):
-            real_loss = binary_loss(tf.ones_like(real_output), real_output)
-            fake_loss = binary_loss(tf.zeros_like(fake_output), fake_output)
-            return tf.nn.compute_average_loss(real_loss) + tf.nn.compute_average_loss(fake_loss)
 
     with strategy.scope():
 
 
         def train_step(inputs, GLOBAL_BATCH_SIZE=0):
-            sketch_inputs, rgb_inputs = inputs
-            with tf.GradientTape() as siamese_tape, tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-                sketch_embed = sketch_model(sketch_inputs, training=True)
-                rgb_embed = rgb_model(rgb_inputs, training=True)
-                sketch_logits = disc_model(sketch_embed, training=True)
-                rgb_logits = disc_model(rgb_embed, training=True)
-                embd_loss = compute_triplet_loss(sketch_embed, rgb_embed, train_class)  # triplet loss
-                generate_loss = compute_generator_loss(sketch_logits) + compute_generator_loss(rgb_logits, False)
-                disc_loss = compute_discriminator_loss(rgb_logits, sketch_logits)
-                # loss  = embd_loss + generate_loss
 
-            disc_grads = disc_tape.gradient(disc_loss, disc_model.trainable_weights)
-            disc_optimizer.apply_gradients(zip(disc_grads, disc_model.trainable_weights))
-
-            weights = sketch_model.trainable_weights + rgb_model.trainable_weights
-
-            gen_grads = gen_tape.gradient(generate_loss, weights)
-            gen_optimizer.apply_gradients(zip(gen_grads, weights))
-
+            with tf.GradientTape() as siamese_tape, tf.GradientTape():
+                embeddings = model(inputs, training=True)
+                embd_loss = compute_triplet_loss(embeddings, train_class, train_class * shots)  # triplet loss
+                           # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
-
-            siamese_grads = siamese_tape.gradient(embd_loss, weights)
-            siamese_optimizer.apply_gradients(zip(siamese_grads, weights))
-
+            siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
+            siamese_optimizer.apply_gradients(zip(siamese_grads, model.trainable_weights))
             loss_train(embd_loss)
             return embd_loss
 
 
         def val_step(inputs, GLOBAL_BATCH_SIZE=0):
-            sketch_inputs, rgb_inputs = inputs
-            sketch_embed = sketch_model(sketch_inputs, training=False)
-            rgb_embed = rgb_model(rgb_inputs, training=False)
-            embd_loss = compute_triplet_loss(sketch_embed, rgb_embed, val_class)  # triplet loss
-            loss = embd_loss
+
+            embeddings = model(inputs, training=False)
+            loss = compute_triplet_loss(embeddings, val_class, val_class * shots)  # triplet loss
+            # loss = compute_triplet_barlow_loss(ap_logits, pp_logits, an_logits, pn_logits)
 
             loss_test(loss)
             return loss
@@ -201,14 +160,14 @@ if __name__ == '__main__':
 
 
         # validation dataset
-        val_inputs = test_dataset.get_mini_sketch_batches(val_class,
+        val_inputs = train_dataset.get_mini_offline_batches(val_class,
                                                            shots=shots,
-                                                            validation=False
+                                                            validation=True
                                                            )
 
         for epoch in range(epochs):
             # dataset
-            train_inputs = train_dataset.get_mini_sketch_batches(train_class,
+            train_inputs = train_dataset.get_mini_offline_batches(train_class,
                                                                   shots=shots,
                                                                   validation=False
 
@@ -224,13 +183,14 @@ if __name__ == '__main__':
                     tf.summary.scalar('loss', loss_train.result().numpy(), step=epoch)
                 with test_summary_writer.as_default():
                     tf.summary.scalar('loss', loss_test.result().numpy(), step=epoch)
-                print("Training loss=%f, validation loss=%f" % (
+                print("Epoch: %f, Training loss=%f, validation loss=%f" % (epoch,
                     loss_train.result().numpy(), loss_test.result().numpy()))  # print train and val losses
 
                 val_loss = loss_test.result().numpy()
                 if (val_loss_th > val_loss):
                     val_loss_th = val_loss
                     manager.save()
+
                     early_idx = 0
 
                 else:

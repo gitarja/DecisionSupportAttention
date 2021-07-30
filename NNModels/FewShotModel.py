@@ -54,7 +54,6 @@ class ProjectBlock(K.layers.Layer):
 
 class FewShotModel(K.models.Model):
 
-
     def __init__(self, filters=64, z_dim=64):
         super(FewShotModel, self).__init__()
 
@@ -113,6 +112,39 @@ class FewShotModel(K.models.Model):
         x = self.random_zoomout_neg(x)
 
         return x
+
+class FewShotModelSmall(K.models.Model):
+
+    def __init__(self, filters=64, z_dim=64):
+        super(FewShotModelSmall, self).__init__()
+
+        self.conv_1 = ConvBlock(filters=filters)
+        self.conv_2 = ConvBlock(filters=filters)
+        self.conv_3 = ConvBlock(filters=filters)
+
+        #projector
+        self.dense = K.layers.Dense(z_dim, activation=None, use_bias=True)
+        self.normalize = tf.keras.layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=-1))
+        self.flat = K.layers.Flatten()
+        self.relu = tf.keras.layers.ReLU()
+        self.batch = K.layers.BatchNormalization()
+        self.data_augment = K.models.Sequential([
+            K.layers.experimental.preprocessing.RandomZoom(0.2),
+            K.layers.experimental.preprocessing.RandomFlip("horizontal"),
+            K.layers.experimental.preprocessing.RandomRotation(0.2)
+        ])
+
+
+
+
+    def call(self, inputs, training=None, mask=None):
+        z = self.data_augment(inputs)
+        z = self.conv_1(z)
+        z = self.conv_2(z)
+        z = self.conv_3(z)
+        z = self.flat(z)
+        z = self.normalize(self.dense(z))
+        return z
 
 class DeepMetric(K.models.Model):
 

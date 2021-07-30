@@ -32,12 +32,13 @@ def predict_class(x):
     c_max = np.argmax(c)
     return idx[c_max]
 def kNN(query, q_labels, references, ref_labels, ref_num=1, th=0.5):
-    X = references.numpy()
+    X = references
+    q = query
     y = ref_labels + 1
     classifier = KNeighborsClassifier(n_neighbors=ref_num, metric="euclidean", algorithm="kd_tree")
     classifier.fit(X, y)
 
-    q = query.numpy()
+
     q_y = q_labels + 1
 
     # #identify outliers or novel class
