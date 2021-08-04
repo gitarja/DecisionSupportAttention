@@ -128,18 +128,18 @@ class FewShotModelSmall(K.models.Model):
         self.flat = K.layers.Flatten()
         self.relu = tf.keras.layers.ReLU()
         self.batch = K.layers.BatchNormalization()
-        self.data_augment = K.models.Sequential([
-            K.layers.experimental.preprocessing.RandomZoom(0.2),
-            K.layers.experimental.preprocessing.RandomFlip("horizontal"),
-            K.layers.experimental.preprocessing.RandomRotation(0.2)
-        ])
+        # self.data_augment = K.models.Sequential([
+        #     K.layers.experimental.preprocessing.RandomZoom(0.2),
+        #     K.layers.experimental.preprocessing.RandomFlip("horizontal"),
+        #     K.layers.experimental.preprocessing.RandomRotation(0.2)
+        # ])
 
 
 
 
     def call(self, inputs, training=None, mask=None):
-        z = self.data_augment(inputs)
-        z = self.conv_1(z)
+        # z = self.data_augment(inputs)
+        z = self.conv_1(inputs)
         z = self.conv_2(z)
         z = self.conv_3(z)
         z = self.flat(z)

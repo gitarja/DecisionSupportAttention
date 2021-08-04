@@ -89,7 +89,7 @@ class Dataset:
 
 
         return resnet_v2.preprocess_input(temp_images.astype(np.float32)), temp_labels.astype(np.int32), resnet_v2.preprocess_input(ref_images.astype(
-            np.float32)), ref_labels.astype(np.float32)
+            np.float32)), ref_labels.astype(np.int32)
 
 
 if __name__ == '__main__':
@@ -97,6 +97,7 @@ if __name__ == '__main__':
     query, labels, references, ref_labels = test_dataset.get_batches()
     # train_data, domain_labels = test_dataset.get_mini_sketch_batches(n_class=25, shots=4)
     print(query.shape)
+    print(references.shape)
 
     # for _, data in enumerate(test_data):
     #     print(data)

@@ -41,15 +41,6 @@ def kNN(query, q_labels, references, ref_labels, ref_num=1, th=0.5):
 
     q_y = q_labels + 1
 
-    # #identify outliers or novel class
-    # dist, index = classifier.kneighbors(q, ref_num, True)
-    # masked_pred = y[index] * (dist <= th)
-    # predictions = []
-    # for i in range(len(masked_pred)):
-    #     predictions.append(predict_class(masked_pred[i,:]))
-    # return np.average(predictions==q_y)
-
-    #identify outliers or novel class
     return classifier.predict(q) == q_y
 
 

@@ -137,16 +137,15 @@ class Dataset:
 
         if outlier == False:
             label_subsets = random.sample(self.labels, k=num_classes)
-            for class_idx, class_obj in enumerate(label_subsets):
-                temp_labels[class_idx] = class_idx
-                ref_labels[class_idx * shots: (class_idx + 1) * shots] = class_idx
-
+            for i in range(len(label_subsets)):
+                temp_labels[i] = i
+                ref_labels[i * shots: (i + 1) * shots] = i
                 # sample images
-
                 images_to_split = random.sample(
-                    self.data[label_subsets[class_idx]], k=shots + 1)
-                temp_images[class_idx] = images_to_split[-1]
-                ref_images[class_idx * shots: (class_idx + 1) * shots] = images_to_split[:-1]
+                    self.data[label_subsets[i]], k=shots + 1)
+
+                temp_images[i] = images_to_split[-1]
+                ref_images[i * shots: (i + 1) * shots] = images_to_split[:-1]
         else:
             # generate support
             support_labels = random.sample(self.labels[:int(len(self.labels)/2)], k=num_classes)

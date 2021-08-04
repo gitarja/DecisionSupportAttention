@@ -187,7 +187,7 @@ if __name__ == '__main__':
                     loss_train.result().numpy(), loss_test.result().numpy()))  # print train and val losses
 
                 val_loss = loss_test.result().numpy()
-                if (val_loss_th > val_loss):
+                if (val_loss_th >= val_loss):
                     val_loss_th = val_loss
                     manager.save()
                     early_idx = 0

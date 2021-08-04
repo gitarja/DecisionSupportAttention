@@ -57,19 +57,20 @@ class CentroidTripletSketch():
                                       (n_class, n_class * self.n_shots))
         else:
             centroids = tfp.stats.percentile(res_embed, 50.0, 1, keepdims=True)
-            dist_to_cens = tf.reshape(tf.reduce_sum(tf.square(tf.expand_dims(res_embed, 1) - centroids), -1),
-                                      (n_class, n_class * shots_add))
+            if self.soft:
+                dist_to_cens = tf.reshape(
+                    tf.reduce_sum(tf.math.log(tf.math.cosh(tf.expand_dims(res_embed, 1) - centroids)), -1),
+                    (n_class, n_class * shots_add))
+
+            else:
+                dist_to_cens = tf.reshape(tf.reduce_sum(tf.square(tf.expand_dims(res_embed, 1) - centroids), -1),
+                                          (n_class, n_class * shots_add))
 
             d = tf.reshape(tf.repeat(tf.eye(n_class), shots_add), (n_class, n_class * shots_add))
             inner_dist = tf.reshape(tf.boolean_mask(dist_to_cens, d == 1), (N, -1))
             extra_dist = tf.reduce_min(
                 tf.reshape(tf.boolean_mask(dist_to_cens, d == 0), (n_class, n_class - 1, shots_add)), axis=1)
             triplet_loss = tf.maximum(0., self.margin + inner_dist - tf.reshape(extra_dist, (N, -1)))
-
-
-        if self.soft:
-            triplet_loss = tf.square(triplet_loss)
-
         return triplet_loss
 
 class CentroidTriplet():
