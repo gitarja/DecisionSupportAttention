@@ -37,7 +37,7 @@ num_classes = 5
 shots = 5
 
 #checkpoint
-models_path = "/mnt/data1/users/pras/result/Siamese/OmniGlot/margin/"
+models_path = "/mnt/data1/users/pras/result/Siamese/OmniGlot/"
 random.seed(2021)
 
 test_list = pd.read_csv("test_list.csv")
@@ -52,16 +52,15 @@ for index, row in test_list.iterrows():
     correlation = False
     #model
     model = FewShotModel(filters=64, z_dim=64)
-    deep_metric = DeepMetric()
     # check point
 
-    checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model, deep_metric_model=deep_metric)
+    checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
 
     manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=100)
     all_acc = []
     all_std = []
 
-    checkpoint.restore(manager.checkpoints[-row["index"]])
+    checkpoint.restore(manager.checkpoints[-3])
 
     acc_avg = []
     for i in range(len(data_test)):

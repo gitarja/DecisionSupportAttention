@@ -28,59 +28,68 @@ def squared_dist(A):
     return distances
 
 
-class CentroidTripletSketch():
+def smooth_hinge(m, z):
+    z = tf.where(z <= -m, z * 0., z)
+    z = tf.where((z< 0) & (z > -m), 0.5 * tf.square(m + z), z)
+    z = tf.where(z >=0, 0.5 + z, z)
 
-    def __init__(self, margin=0.5, soft=False, n_shots=5, mean=False):
-        super(CentroidTripletSketch, self).__init__()
-        self.margin = margin
-        self.n_shots = n_shots
-        self.soft = soft
-        self.mean = mean
+    return z
 
-
-    def __call__(self, sketch_embd, embed, n_class=5):
-        sketch_embd = ops.convert_to_tensor_v2(sketch_embd,  name="sketch_embd")
-        embed = ops.convert_to_tensor_v2(embed, name="embed")
-        # comver tensor
-        embed = tf.cast(embed, tf.float32)
-        N_s, D_s = sketch_embd.shape
-        N_e, D_e = embed.shape
-        N = N_s + N_e
-        # res_embed = tf.concat([sketch_embd, tf.reshape(embed, (n_class, self.n_shots, D))], axis=-1)
-        res_embed = tf.concat([tf.expand_dims(sketch_embd, 1), tf.reshape(embed, (n_class, self.n_shots, D_s))], axis=1)
-
-        # centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
-        shots_add = self.n_shots + 1
-        if self.mean:
-            centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
-            dist_to_cens = tf.reshape(tf.reduce_sum(tf.square(tf.expand_dims(res_embed, 1) - centroids), -1),
-                                      (n_class, n_class * self.n_shots))
-        else:
-            centroids = tfp.stats.percentile(res_embed, 50.0, 1, keepdims=True)
-            if self.soft:
-                dist_to_cens = tf.reshape(
-                    tf.reduce_sum(tf.math.log(tf.math.cosh(tf.expand_dims(res_embed, 1) - centroids)), -1),
-                    (n_class, n_class * shots_add))
-
-            else:
-                dist_to_cens = tf.reshape(tf.reduce_sum(tf.square(tf.expand_dims(res_embed, 1) - centroids), -1),
-                                          (n_class, n_class * shots_add))
-
-            d = tf.reshape(tf.repeat(tf.eye(n_class), shots_add), (n_class, n_class * shots_add))
-            inner_dist = tf.reshape(tf.boolean_mask(dist_to_cens, d == 1), (N, -1))
-            extra_dist = tf.reduce_min(
-                tf.reshape(tf.boolean_mask(dist_to_cens, d == 0), (n_class, n_class - 1, shots_add)), axis=1)
-            triplet_loss = tf.maximum(0., self.margin + inner_dist - tf.reshape(extra_dist, (N, -1)))
-        return triplet_loss
+# class CentroidTripletSketch():
+#
+#     def __init__(self, margin=0.5, soft=False, n_shots=5, mean=False):
+#         super(CentroidTripletSketch, self).__init__()
+#         self.margin = margin
+#         self.n_shots = n_shots
+#         self.soft = soft
+#         self.mean = mean
+#
+#
+#     def __call__(self, sketch_embd, embed, n_class=5):
+#         sketch_embd = ops.convert_to_tensor_v2(sketch_embd,  name="sketch_embd")
+#         embed = ops.convert_to_tensor_v2(embed, name="embed")
+#         # comver tensor
+#         embed = tf.cast(embed, tf.float32)
+#         N_s, D_s = sketch_embd.shape
+#         N_e, D_e = embed.shape
+#         N = N_s + N_e
+#         # res_embed = tf.concat([sketch_embd, tf.reshape(embed, (n_class, self.n_shots, D))], axis=-1)
+#         res_embed = tf.concat([tf.expand_dims(sketch_embd, 1), tf.reshape(embed, (n_class, self.n_shots, D_s))], axis=1)
+#
+#         # centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
+#         shots_add = self.n_shots + 1
+#         if self.mean:
+#             centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
+#             dist_to_cens = tf.reshape(tf.reduce_sum(tf.square(tf.expand_dims(res_embed, 1) - centroids), -1),
+#                                       (n_class, n_class * self.n_shots))
+#         else:
+#             centroids = tfp.stats.percentile(res_embed, 50.0, 1, keepdims=True)
+#             if self.soft:
+#                 dist_to_cens = tf.reshape(
+#                     tf.reduce_sum(tf.math.log(tf.math.cosh(tf.expand_dims(res_embed, 1) - centroids)), -1),
+#                     (n_class, n_class * shots_add))
+#
+#             else:
+#                 dist_to_cens = tf.reshape(tf.reduce_sum(tf.square(tf.expand_dims(res_embed, 1) - centroids), -1),
+#                                           (n_class, n_class * shots_add))
+#
+#             d = tf.reshape(tf.repeat(tf.eye(n_class), shots_add), (n_class, n_class * shots_add))
+#             inner_dist = tf.reshape(tf.boolean_mask(dist_to_cens, d == 1), (N, -1))
+#             extra_dist = tf.reduce_min(
+#                 tf.reshape(tf.boolean_mask(dist_to_cens, d == 0), (n_class, n_class - 1, shots_add)), axis=1)
+#             triplet_loss = tf.maximum(0., self.margin + inner_dist - tf.reshape(extra_dist, (N, -1)))
+#         return triplet_loss
 
 class CentroidTriplet():
 
-    def __init__(self, margin=0.5, soft=False, n_shots=5, mean=False):
+    def __init__(self, margin=0.5, soft=False, n_shots=5, mean=False, log_cosh=False, squared=False):
         super(CentroidTriplet, self).__init__()
         self.margin = margin
         self.n_shots = n_shots
         self.soft = soft
         self.mean = mean
+        self.log_cosh = log_cosh
+        self.squared = squared
 
 
     def __call__(self, embed, n_class=5):
@@ -97,17 +106,24 @@ class CentroidTriplet():
                                       (n_class, n_class * self.n_shots))
         else:
             centroids = tfp.stats.percentile(res_embed, 50.0, 1, keepdims=True)
-            dist_to_cens = tf.reshape(tf.reduce_sum(tf.square(tf.expand_dims(res_embed, 1) - centroids), -1),
-                                      (n_class, n_class * self.n_shots))
+            if self.log_cosh:
+                dist_to_cens = tf.reshape(
+                                    tf.reduce_sum(tf.math.log(tf.math.cosh(tf.expand_dims(res_embed, 1) - centroids)), -1),
+                                    (n_class, n_class * self.n_shots))
+            else:
+                dist_to_cens = tf.reshape(tf.reduce_sum(tf.square(tf.expand_dims(res_embed, 1) - centroids), -1),
+                                          (n_class, n_class * self.n_shots))
 
         d = tf.reshape(tf.repeat(tf.eye(n_class), self.n_shots), (n_class, n_class * self.n_shots))
         inner_dist  = tf.reshape(tf.boolean_mask(dist_to_cens, d==1), (N, -1))
         extra_dist = tf.reduce_min(tf.reshape(tf.boolean_mask(dist_to_cens, d == 0), (n_class, n_class-1, self.n_shots)), axis=1)
-        triplet_loss = tf.maximum(0., self.margin + inner_dist - tf.reshape(extra_dist, (N, -1)))
+
 
 
         if self.soft:
-            triplet_loss = tf.square(triplet_loss)
+            triplet_loss = tf.square(tf.maximum(0., self.margin + inner_dist - tf.reshape(extra_dist, (N, -1))))
+        else:
+            triplet_loss = tf.maximum(0., self.margin + inner_dist - tf.reshape(extra_dist, (N, -1)))
 
         return triplet_loss
 
