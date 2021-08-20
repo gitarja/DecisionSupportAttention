@@ -31,7 +31,7 @@ def predict_class(x):
     idx, c = np.unique(x, return_counts=True)
     c_max = np.argmax(c)
     return idx[c_max]
-def kNN(query, q_labels, references, ref_labels, ref_num=1, th=0.5):
+def kNN(query, q_labels, references, ref_labels, ref_num=1, th=0.5, return_pred=True):
     X = references
     q = query
     y = ref_labels + 1
@@ -41,7 +41,10 @@ def kNN(query, q_labels, references, ref_labels, ref_num=1, th=0.5):
 
     q_y = q_labels + 1
 
-    return classifier.predict(q) == q_y
+    if return_pred:
+        return classifier.predict(q)
+    else:
+        return classifier.predict(q) == q_y
 
 
 
