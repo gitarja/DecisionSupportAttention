@@ -13,6 +13,7 @@ import tensorflow_probability as tfp
 import glob
 import os
 import pandas as pd
+from sklearn.metrics import euclidean_distances
 
 os.environ["TF_XLA_FLAGS"] = "--tf_xla_enable_xla_devices"
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
@@ -87,9 +88,14 @@ for index, row in test_list.iterrows():
                 references[(i + 1) * step_ref:div + ((i + 1) * step_ref)], False)
         acc = knn_class(q_logits, labels, ref_logits, ref_labels, shots)
 
-        acc_avg.append(acc)
-    # print(np.average(acc_avg))
-    all_acc.append((np.average(acc_avg)))
-    df = pd.DataFrame(np.concatenate(acc_avg).astype(np.float), columns=["acc"])
-    df.to_csv(row["path"] + ".csv")
-    print(str(np.max(all_acc)) + "," + str(np.argmax(all_acc) + 1))
+        dist = euclidean_distances(q_logits, ref_logits)
+        y_true = np.tile(np.expand_dims(ref_labels, 0), [len(labels), 1]) == np.tile(np.expand_dims(labels, -1), len(ref_labels))
+        y_pred = dist
+        np.save("y_true.npy", y_true)
+        np.save("y_pred.npy", y_pred)
+    #     acc_avg.append(acc)
+    # # print(np.average(acc_avg))
+    # all_acc.append((np.average(acc_avg)))
+    # df = pd.DataFrame(np.concatenate(acc_avg).astype(np.float), columns=["acc"])
+    # df.to_csv(row["path"] + ".csv")
+    # print(str(np.max(all_acc)) + "," + str(np.argmax(all_acc) + 1))

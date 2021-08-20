@@ -37,7 +37,7 @@ num_classes = 5
 shots = 5
 
 #checkpoint
-models_path = "/mnt/data1/users/pras/result/Siamese/OmniGlot/"
+models_path = "/mnt/data1/users/pras/result/Siamese/OmniGlot/margin/"
 random.seed(2021)
 
 test_list = pd.read_csv("test_list.csv")
@@ -52,15 +52,16 @@ for index, row in test_list.iterrows():
     correlation = False
     #model
     model = FewShotModel(filters=64, z_dim=64)
+    deep_metric = DeepMetric()
     # check point
 
-    checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
+    checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model, deep_metric_model=deep_metric)
 
     manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=100)
     all_acc = []
     all_std = []
 
-    checkpoint.restore(manager.checkpoints[-3])
+    checkpoint.restore(manager.checkpoints[-row["index"]])
 
     acc_avg = []
     for i in range(len(data_test)):
@@ -75,8 +76,8 @@ for index, row in test_list.iterrows():
     all_acc.append(np.average(acc_avg))
     all_std.append(np.std(acc_avg))
     # df = pd.DataFrame(np.concatenate(acc_avg).astype(np.float), columns=["acc"])
-    df = pd.DataFrame(acc_avg, columns=["acc"])
-    df.to_csv(str(num_classes)+"-way-"+str(shots)+"-shots.csv")
+    # df = pd.DataFrame(acc_avg, columns=["acc"])
+    # df.to_csv(str(num_classes)+"-way-"+str(shots)+"-shots.csv")
     # df.to_csv( row["path"] + ".csv")
 
     print(str(np.max(all_acc)) + "," + str(all_std[np.argmax(all_acc)]) + "," + str(np.argmax(all_acc) + 1))

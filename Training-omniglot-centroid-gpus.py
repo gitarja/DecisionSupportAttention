@@ -27,8 +27,6 @@ if __name__ == '__main__':
     parser.add_argument('--n_class', type=int, default=100)
     parser.add_argument('--z_dim', type=int, default=64)
     parser.add_argument('--mean', type=bool, default=False)
-    parser.add_argument('--log_cosh', type=bool, default=False)
-    parser.add_argument('--shots', type=int, default=20)
 
 
     args = parser.parse_args()
@@ -63,10 +61,10 @@ if __name__ == '__main__':
     val_class = len(train_dataset.val_labels)
     ref_num = 5
     val_loss_th = 1e+3
-    shots=args.shots
+    shots=20
 
     # training setting
-    epochs = 10000
+    epochs = 5000
     lr = 1e-3
     lr_siamese = 1e-3
 
@@ -87,7 +85,7 @@ if __name__ == '__main__':
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    triplet_loss = CentroidTriplet(margin=args.margin, soft=args.soft,  n_shots=shots, mean=args.mean, log_cosh=args.log_cosh)
+    triplet_loss = CentroidTriplet(margin=args.margin, soft=args.soft,  n_shots=shots, mean=args.mean)
 
     with strategy.scope():
         model = FewShotModel(filters=64, z_dim=z_dim)

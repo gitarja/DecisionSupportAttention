@@ -141,7 +141,6 @@ class Dataset:
                 temp_labels[i] = i
                 ref_labels[i * shots: (i + 1) * shots] = i
                 # sample images
-
                 images_to_split = random.sample(
                     self.data[label_subsets[i]], k=shots + 1)
 
