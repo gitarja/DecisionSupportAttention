@@ -4,8 +4,9 @@ import random
 import matplotlib.pyplot as plt
 import pickle
 from Market.Conf import DATASET_PATH
-from tensorflow.keras.applications import inception_v3, resnet_v2
 
+import glob
+from PIL import Image
 
 class Dataset:
 
@@ -55,7 +56,7 @@ class Dataset:
 
             anchor_positive[i * shots:(i + 1) * shots] = positive_to_split
 
-        return resnet_v2.preprocess_input(anchor_positive.astype(np.float32))
+        return anchor_positive.astype(np.float32)
 
     # def get_train_batches(self):
 
@@ -88,33 +89,79 @@ class Dataset:
             idx += len_r
 
 
-        return resnet_v2.preprocess_input(temp_images.astype(np.float32)), temp_labels.astype(np.int32), resnet_v2.preprocess_input(ref_images.astype(
-            np.float32)), ref_labels.astype(np.int32)
+        return temp_images.astype(np.float32), temp_labels.astype(np.int32), ref_images.astype(
+            np.float32), ref_labels.astype(np.int32)
+
+class DataTest:
+
+
+    def getTestData(self):
+        n_query = 3368  # number of query images
+        n_references = 19732  # number of references
+        temp_labels = np.zeros(shape=(n_query))
+        temp_images = np.zeros(shape=(n_query, 128, 64, 3))
+        temp_cams = np.zeros(shape=(n_query))
+
+        ref_labels = np.zeros(shape=(n_references))
+        ref_images = np.zeros(shape=(n_references, 128, 64, 3))
+        ref_cams = np.zeros(shape=(n_references))
+
+        path = DATASET_PATH
+        i = 0
+        #prepare query
+        for file in sorted(glob.glob(path + "query/*.jpg")):
+            idx = file.split("/")[-1].split("_")[0]
+            cam_idx = file.split("/")[-1].split("_")[1][1]
+
+            im = np.array(Image.open(file))
+            #assign files
+            temp_images[i] = im
+            temp_labels[i] = int(idx)
+            temp_cams[i] = int(cam_idx)
+            i+=1
+
+        # prepare refereces
+        i=0
+        for file in sorted(glob.glob(path + "bounding_box_test/*.jpg")):
+            idx = file.split("/")[-1].split("_")[0]
+            cam_idx = file.split("/")[-1].split("_")[1][1]
+
+            im = np.array(Image.open(file))
+            # assign files
+            ref_images[i] = im
+            ref_labels[i] = int(idx)
+            ref_cams[i] = int(cam_idx)
+            i += 1
+
+        return temp_images.astype(np.float32), temp_labels, temp_cams, ref_images.astype(np.float32), ref_labels, ref_cams
+
+
 
 
 if __name__ == '__main__':
-    test_dataset = Dataset(mode="test")
-    query, labels, references, ref_labels = test_dataset.get_batches()
-    # train_data, domain_labels = test_dataset.get_mini_sketch_batches(n_class=25, shots=4)
-    print(query.shape)
-    print(references.shape)
-
+    test_dataset = Dataset("train_val")
+    # test_dataset.getTestData()
+    # query, labels, references, ref_labels = test_dataset.get_batches()
+    train_data = test_dataset.get_mini_offline_batches(n_class=37, shots=20)
+    print(train_data.shape)
+    # print(query.shape)
+    # print(references.shape)
+    #
     # for _, data in enumerate(test_data):
     #     print(data)
-
-    # _, axarr = plt.subplots(nrows=5, ncols=3, figsize=(20, 20))
     #
-    # sample_keys = list(test_dataset.data.keys())
+    # _, axarr = plt.subplots(nrows=10, ncols=2)
     #
-    # for a in range(5):
+    # j=0
+    # for a in range(10):
     #     for b in range(2):
-    #         temp_image = test_dataset.sketch[sample_keys[a]][b]
+    #         temp_image = train_data[j]
     #         # temp_image = np.stack((temp_image[:, :, :],), axis=-1)
-    #         temp_image *= 255
+    #
     #         temp_image = np.clip(temp_image, 0, 255).astype("uint8")
-    #         if b == 2:
-    #             axarr[a, b].set_title("Class : " +  sample_keys[a])
+    #
     #         axarr[a, b].imshow(temp_image)
     #         axarr[a, b].xaxis.set_visible(False)
     #         axarr[a, b].yaxis.set_visible(False)
+    #         j+=1
     # plt.show()

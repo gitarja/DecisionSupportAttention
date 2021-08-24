@@ -3,24 +3,32 @@ import tensorflow.keras as K
 from tensorflow.python.framework import ops
 import tensorflow_probability as tfp
 
+
 def off_diagonal(x):
     n = tf.shape(x)[0]
     flattened = tf.reshape(x, [-1])[:-1]
-    off_diagonals = tf.reshape(flattened, (n-1, n+1))[:, 1:]
+    off_diagonals = tf.reshape(flattened, (n - 1, n + 1))[:, 1:]
     return tf.reshape(off_diagonals, [-1])
 
+
 def normalize(x):
-        return (x - tf.reduce_mean(x, 0)) / tf.math.reduce_std(x, 0)
+    return (x - tf.reduce_mean(x, 0)) / tf.math.reduce_std(x, 0)
+
 
 def l2_dis(x1, x2):
-    return tf.reduce_sum(tf.square(x1 - x2), 1)
+    return tf.sqrt(tf.reduce_sum(tf.square(x1 - x2), -1))
+
+def l1_dis(x1, x2):
+    return tf.reduce_sum(tf.abs(x1 - x2), -1)
 
 def log_cosh_dis(x1, x2):
-    return tf.reduce_sum(tf.math.log(tf.math.cosh(x1 - x2)), 1)
+    return tf.reduce_sum(tf.math.log(tf.math.cosh(x1 - x2)), -1)
+
 
 def get_inner_dist(x, s, i):
-    loss = x[(i)*s:(i+1)*s]
+    loss = x[(i) * s:(i + 1) * s]
     return
+
 
 def squared_dist(A):
     expanded_a = tf.expand_dims(A, 1)
@@ -38,9 +46,8 @@ class CentroidTripletSketch():
         self.soft = soft
         self.mean = mean
 
-
     def __call__(self, sketch_embd, embed, n_class=5):
-        sketch_embd = ops.convert_to_tensor_v2(sketch_embd,  name="sketch_embd")
+        sketch_embd = ops.convert_to_tensor_v2(sketch_embd, name="sketch_embd")
         embed = ops.convert_to_tensor_v2(embed, name="embed")
         # comver tensor
         embed = tf.cast(embed, tf.float32)
@@ -74,6 +81,7 @@ class CentroidTripletSketch():
             triplet_loss = tf.maximum(0., self.margin + inner_dist - tf.reshape(extra_dist, (N, -1)))
         return triplet_loss
 
+
 class CentroidTriplet():
 
     def __init__(self, margin=0.5, soft=False, n_shots=5, mean=False):
@@ -83,9 +91,8 @@ class CentroidTriplet():
         self.soft = soft
         self.mean = mean
 
-
     def __call__(self, embed, n_class=5):
-        embed = ops.convert_to_tensor_v2(embed,  name="embed")
+        embed = ops.convert_to_tensor_v2(embed, name="embed")
         # comver tensor
         embed = tf.cast(embed, tf.float32)
         N, D = embed.shape
@@ -94,23 +101,61 @@ class CentroidTriplet():
         # centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
         if self.mean:
             centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
-            dist_to_cens = tf.reshape(tf.reduce_sum(tf.square(tf.expand_dims(res_embed, 1) - centroids), -1),
-                                      (n_class, n_class * self.n_shots))
         else:
             centroids = tfp.stats.percentile(res_embed, 50.0, 1, keepdims=True)
-            dist_to_cens = tf.reshape(tf.reduce_sum(tf.square(tf.expand_dims(res_embed, 1) - centroids), -1),
-                                      (n_class, n_class * self.n_shots))
+
+        dist_to_cens = tf.reshape(l2_dis(tf.expand_dims(res_embed, 1), centroids),
+                                  (n_class, n_class * self.n_shots))
 
         d = tf.reshape(tf.repeat(tf.eye(n_class), self.n_shots), (n_class, n_class * self.n_shots))
-        inner_dist  = tf.reshape(tf.boolean_mask(dist_to_cens, d==1), (N, -1))
-        extra_dist = tf.reduce_min(tf.reshape(tf.boolean_mask(dist_to_cens, d == 0), (n_class, n_class-1, self.n_shots)), axis=1)
+        inner_dist = tf.reshape(tf.boolean_mask(dist_to_cens, d == 1), (N, -1))
+        extra_dist = tf.reduce_min(
+            tf.reshape(tf.boolean_mask(dist_to_cens, d == 0), (n_class, n_class - 1, self.n_shots)), axis=1)
         triplet_loss = tf.maximum(0., self.margin + inner_dist - tf.reshape(extra_dist, (N, -1)))
-
 
         if self.soft:
             triplet_loss = tf.square(triplet_loss)
 
         return triplet_loss
+
+
+class NucleusTriplet():
+
+    def __init__(self, margin=0.5, soft=False, n_shots=5, mean=False):
+        super(NucleusTriplet, self).__init__()
+        self.margin = margin
+        self.n_shots = n_shots
+        self.soft = soft
+        self.mean = mean
+
+    def __call__(self, embed, n_class=5):
+        embed = ops.convert_to_tensor_v2(embed, name="embed")
+        # comver tensor
+        embed = tf.cast(embed, tf.float32)
+        N, D = embed.shape
+        res_embed = tf.reshape(embed, (n_class, self.n_shots, D))
+
+        # centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
+        if self.mean:
+            centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
+        else:
+            centroids = tfp.stats.percentile(res_embed, 50.0, 1, keepdims=True)
+
+        dist_to_cens = tf.reshape(l2_dis(tf.expand_dims(centroids, 1), res_embed),
+                                  (n_class, n_class * self.n_shots))
+
+        d = tf.reshape(tf.repeat(tf.eye(n_class), self.n_shots), (n_class, n_class * self.n_shots))
+        inner_dist = tf.reduce_max(tf.reshape(tf.boolean_mask(dist_to_cens, d == 1), (n_class, self.n_shots)), -1)
+        extra_dist = tf.reduce_min(tf.reshape(tf.boolean_mask(dist_to_cens, d == 0), (n_class, (n_class - 1) * self.n_shots)), axis=-1)
+
+
+        if self.soft:
+            triplet_loss = tf.math.log1p(tf.math.exp(inner_dist - extra_dist))
+        else:
+            triplet_loss = tf.maximum(0., self.margin + inner_dist - extra_dist)
+
+        return triplet_loss
+
 
 class DoubleTriplet():
 
@@ -119,7 +164,6 @@ class DoubleTriplet():
         self.margin = margin
         self.soft = soft
         self.squared = squared
-
 
     def __call__(self, anchor_positive, pair_positive, anchor_negative, pair_negative):
         ap = ops.convert_to_tensor_v2(anchor_positive, name="anchor_positive")
@@ -133,9 +177,8 @@ class DoubleTriplet():
         an = tf.cast(an, tf.float32)
         pn = tf.cast(pn, tf.float32)
 
-        centroid_pos = (ap + pp)/2.
-        centroid_neg = (an + pn)/2.
-
+        centroid_pos = (ap + pp) / 2.
+        centroid_neg = (an + pn) / 2.
 
         # d_pos = l2_dis(ap, pp) # distance between positive anchor and pair
         # d_neg = l2_dis(an, pn)  # distance between negative anchor and pair
@@ -145,8 +188,7 @@ class DoubleTriplet():
         d_neg = l2_dis(an, pn)  # distance between negative anchor and pair
         d_pos_neg = l2_dis(centroid_pos, centroid_neg)  # distance between positive and negative centroids
 
-
-        pull_in = (d_neg + d_pos)/2.
+        pull_in = (d_neg + d_pos) / 2.
         push_away = d_pos_neg
 
         if self.soft:
@@ -157,93 +199,48 @@ class DoubleTriplet():
         else:
             triplet_loss = tf.maximum(0.0, (self.margin + pull_in) - (push_away))
 
-
-
-
         return triplet_loss
 
 
+class DoubleBarlow:
+    def __init__(self, alpha=5e-3,
+                 name='DoubleBarlow'):
+        super(DoubleBarlow, self).__init__()
+        self.alpha = alpha
 
+    def __call__(self, anchor, positive, negative):
+        '''
+        :param y_true: anchor
+        :param y_pred: projection
+        :return:
+        '''
+        anchor = ops.convert_to_tensor_v2(anchor, name="anchor")
+        positive = ops.convert_to_tensor_v2(positive, name="positive")
+        negative = ops.convert_to_tensor_v2(negative, name="negative")
 
+        anchor = tf.cast(anchor, tf.float32)
+        anchor_norm = normalize(anchor)
+        positive = tf.cast(positive, tf.float32)
+        positive_norm = normalize(positive)
+        negative = tf.cast(negative, tf.float32)
+        negative_norm = normalize(negative)
 
-class TripletOffline():
+        N, D = anchor.shape
+        c_ap = (tf.transpose(anchor_norm) @ positive_norm) / N
+        c_an = (tf.transpose(anchor_norm) @ negative_norm) / N
+        I = tf.eye(D)
 
-    def __init__(self, margin=1., squared=False, soft=False):
-        super(TripletOffline, self).__init__()
-        self.margin = margin
-        self.squared = squared
-        self.soft = soft
+        # positive loss
+        c_diff = tf.math.log(tf.math.cosh(c_ap - I)) + tf.math.log(tf.math.cosh(c_an))
+        c_diff = tf.where(I != 1, c_diff * self.alpha, c_diff)
 
+        # negative loss
+        # d_neg = tf.reduce_sum(tf.square(anchor - negative), 1)
+        # negative_loss = tf.reduce_mean(tf.math.log1p(tf.math.exp(-d_neg)), -1)
+        loss = tf.reduce_mean(c_diff)
 
+        return loss
 
-    def __call__(self, anchor_positive, pair_positive, anchor_negative):
-        ap = ops.convert_to_tensor_v2(anchor_positive, name="anchor_positive")
-        pp = ops.convert_to_tensor_v2(pair_positive, name="pair_positive")
-        an = ops.convert_to_tensor_v2(anchor_negative, name="anchor_negative")
-
-        # comver tensor
-        ap = tf.cast(ap, tf.float32)
-        pp = tf.cast(pp, tf.float32)
-        an = tf.cast(an, tf.float32)
-
-
-        d_pos = tf.reduce_sum(tf.square(ap - pp), 1)  # distance between positive anchor and pair
-        d_pos_neg = tf.reduce_sum(tf.square(ap - an), 1)  # distance between positive and negative anchor
-
-
-        pull_in = d_pos
-        push_away = d_pos_neg
-
-        triplet_loss = tf.maximum(0.0, (self.margin + pull_in) - (push_away))
-        # Get final mean triplet loss
-        triplet_loss = tf.reduce_mean(triplet_loss, axis=-1)
-
-        return triplet_loss
-
-
-class  DoubleBarlow:
-        def __init__(self, alpha=5e-3,
-                     name='DoubleBarlow'):
-            super(DoubleBarlow, self).__init__()
-            self.alpha = alpha
-
-
-
-
-        def __call__(self, anchor, positive, negative):
-            '''
-            :param y_true: anchor
-            :param y_pred: projection
-            :return:
-            '''
-            anchor = ops.convert_to_tensor_v2(anchor, name="anchor")
-            positive = ops.convert_to_tensor_v2(positive, name="positive")
-            negative = ops.convert_to_tensor_v2(negative, name="negative")
-
-            anchor = tf.cast(anchor, tf.float32)
-            anchor_norm = normalize(anchor)
-            positive = tf.cast(positive, tf.float32)
-            positive_norm = normalize(positive)
-            negative = tf.cast(negative, tf.float32)
-            negative_norm = normalize(negative)
-
-
-            N, D = anchor.shape
-            c_ap = (tf.transpose(anchor_norm) @ positive_norm) / N
-            c_an = (tf.transpose(anchor_norm) @ negative_norm) / N
-            I = tf.eye(D)
-
-
-            #positive loss
-            c_diff = tf.math.log(tf.math.cosh(c_ap - I)) + tf.math.log(tf.math.cosh(c_an))
-            c_diff = tf.where(I != 1, c_diff * self.alpha, c_diff)
-
-            #negative loss
-            # d_neg = tf.reduce_sum(tf.square(anchor - negative), 1)
-            # negative_loss = tf.reduce_mean(tf.math.log1p(tf.math.exp(-d_neg)), -1)
-            loss = tf.reduce_mean(c_diff)
-
-            return loss
 
 class BarlowTwins(K.losses.Loss):
     def __init__(self, alpha=5e-3, beta=3., positive=True, reduction=tf.keras.losses.Reduction.AUTO,
@@ -252,8 +249,6 @@ class BarlowTwins(K.losses.Loss):
         self.alpha = alpha
         self.beta = beta
         self.positive = positive
-
-
 
     def call(self, y_true, y_pred):
         '''
@@ -293,9 +288,9 @@ class BarlowTwins(K.losses.Loss):
 if __name__ == '__main__':
     import numpy as np
 
-    # a = tf.transpose(tf.Variable([[1, 1, 1, 1, 2,2,2,2, 3,3,3,3]]))
-    a =tf.random.normal((3, 5))
-    b=tf.random.normal((6, 5))
-    loss = CentroidTripletSketch(n_shots=2)
-    loss(a, b, n_class=3)
-
+    b = tf.transpose(tf.Variable([[1., 2., 3., 4., 5., 6.]]))
+    n_class = 3
+    n_shots = 2
+    a = tf.ones((n_shots * n_class, 1)) * b
+    loss = NucleusTriplet(n_shots=n_shots)
+    loss(a, n_class=n_class)

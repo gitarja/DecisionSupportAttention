@@ -32,19 +32,19 @@ def predict_class(x):
     c_max = np.argmax(c)
     return idx[c_max]
 def kNN(query, q_labels, references, ref_labels, ref_num=1, th=0.5, return_pred=True):
-    X = references
-    q = query
+    X_train = references
+    X_test = query
     y = ref_labels + 1
     classifier = KNeighborsClassifier(n_neighbors=ref_num, metric="euclidean", algorithm="kd_tree")
-    classifier.fit(X, y)
+    classifier.fit(X_train, y)
 
 
     q_y = q_labels + 1
 
     if return_pred:
-        return classifier.predict(q)
+        return classifier.predict(X_test)
     else:
-        return classifier.predict(q) == q_y
+        return classifier.predict(X_test) == q_y
 
 
 

@@ -24,7 +24,7 @@ def knn_class(q_logits, labels, ref_logits, ref_labels, shots=5):
     # std = np.std(np.concatenate([q_logits, ref_logits], 0), 0)
     # q_logits = (q_logits - mean) / std
     # ref_logits = (ref_logits - mean) / std
-    acc = kNN(q_logits, labels, ref_logits, ref_labels, ref_num=1)
+    acc = kNN(q_logits, labels, ref_logits, ref_labels, ref_num=1, return_pred=False)
     return acc
 
 
@@ -37,7 +37,7 @@ num_classes = 5
 shots = 5
 
 #checkpoint
-models_path = "/mnt/data1/users/pras/result/Siamese/OmniGlot/margin/"
+models_path = "/mnt/data1/users/pras/result/Siamese/OmniGlot/n_class_08/"
 random.seed(2021)
 
 test_list = pd.read_csv("test_list.csv")
@@ -60,21 +60,22 @@ for index, row in test_list.iterrows():
     manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=100)
     all_acc = []
     all_std = []
+    for j in range(10):
+        # checkpoint.restore(manager.checkpoints[-row["index"]])
+        checkpoint.restore(manager.checkpoints[-j])
 
-    checkpoint.restore(manager.checkpoints[-row["index"]])
+        acc_avg = []
+        for i in range(len(data_test)):
+            query, labels, references, ref_labels = data_test[i]
+            q_logits = model(query, False)
+            ref_logits = model(references, False)
 
-    acc_avg = []
-    for i in range(len(data_test)):
-        query, labels, references, ref_labels = data_test[i]
-        q_logits = model(query, False)
-        ref_logits = model(references, False)
-
-        acc = knn_class(q_logits, labels, ref_logits, ref_labels, shots)
-        # if np.sum(acc) < num_classes:
-        #     print("wrong")
-        acc_avg.append(np.average(acc))
-    all_acc.append(np.average(acc_avg))
-    all_std.append(np.std(acc_avg))
+            acc = knn_class(q_logits, labels, ref_logits, ref_labels, shots)
+            # if np.sum(acc) < num_classes:
+            #     print("wrong")
+            acc_avg.append(np.average(acc))
+        all_acc.append(np.average(acc_avg))
+        all_std.append(np.std(acc_avg))
     # df = pd.DataFrame(np.concatenate(acc_avg).astype(np.float), columns=["acc"])
     # df = pd.DataFrame(acc_avg, columns=["acc"])
     # df.to_csv(str(num_classes)+"-way-"+str(shots)+"-shots.csv")

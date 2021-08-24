@@ -9,7 +9,7 @@ import tensorflow_addons as tfa
 import datetime
 from Market.Conf import TENSOR_BOARD_PATH
 import argparse
-from Utils.CustomLoss import CentroidTriplet
+from Utils.CustomLoss import CentroidTriplet, NucleusTriplet
 
 import random
 import os
@@ -44,7 +44,7 @@ if __name__ == '__main__':
             # Memory growth must be set before GPUs have been initialized
             print(e)
 
-    cross_tower_ops = tf.distribute.HierarchicalCopyAllReduce(num_packs=3)
+    cross_tower_ops = tf.distribute.HierarchicalCopyAllReduce(num_packs=2)
     strategy = tf.distribute.MirroredStrategy(cross_device_ops=cross_tower_ops)
 
     print(args.n_class)
@@ -56,16 +56,15 @@ if __name__ == '__main__':
     eval_interval = 15
     train_class = args.n_class
 
-    batch_size = 256
-    ALL_BATCH_SIZE = batch_size * strategy.num_replicas_in_sync
+
     val_class = len(train_dataset.val_labels)
     val_loss_th = 1e+3
-    shots = 5
+    shots = 4
 
     # training setting
     epochs = 10000
-    lr = 5e-4
-    lr_siamese = 1e-3
+    lr = 3e-4
+
 
     # early stopping
     early_th = 100
@@ -84,10 +83,10 @@ if __name__ == '__main__':
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    triplet_loss = CentroidTriplet(margin=args.margin, soft=args.soft,  n_shots=shots, mean=args.mean)
+    triplet_loss = NucleusTriplet(margin=args.margin, soft=args.soft,  n_shots=shots, mean=args.mean)
 
     with strategy.scope():
-        model = RGBModel(z_dim=z_dim)
+        model = RGBModel(z_dim=z_dim, model="res_net")
 
         # check point
         checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
@@ -99,7 +98,7 @@ if __name__ == '__main__':
             decay_steps=1000,
             decay_rate=0.8,
             staircase=True)
-        siamese_optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+        siamese_optimizer = tf.keras.optimizers.Adam(learning_rate=lr, beta_2=0.5)
 
 
         #metrics
@@ -120,7 +119,7 @@ if __name__ == '__main__':
 
         def train_step(inputs, GLOBAL_BATCH_SIZE=0):
 
-            with tf.GradientTape() as siamese_tape, tf.GradientTape():
+            with tf.GradientTape() as siamese_tape:
                 embeddings = model(inputs, training=True)
                 embd_loss = compute_triplet_loss(embeddings, train_class, train_class * shots)  # triplet loss
                            # Use the gradient tape to automatically retrieve
@@ -135,7 +134,7 @@ if __name__ == '__main__':
 
             embeddings = model(inputs, training=False)
             loss = compute_triplet_loss(embeddings, val_class, val_class * shots)  # triplet loss
-            # loss = compute_triplet_barlow_loss(ap_logits, pp_logits, an_logits, pn_logits)
+
 
             loss_test(loss)
             return loss
@@ -174,11 +173,11 @@ if __name__ == '__main__':
                                                                   )
 
 
-            distributed_train_step(train_inputs, ALL_BATCH_SIZE)
+            distributed_train_step(train_inputs, None)
 
             if (epoch + 1) % eval_interval == 0:
 
-                distributed_test_step(val_inputs, ALL_BATCH_SIZE)
+                distributed_test_step(val_inputs, None)
                 with train_summary_writer.as_default():
                     tf.summary.scalar('loss', loss_train.result().numpy(), step=epoch)
                 with test_summary_writer.as_default():
@@ -187,10 +186,10 @@ if __name__ == '__main__':
                     loss_train.result().numpy(), loss_test.result().numpy()))  # print train and val losses
 
                 val_loss = loss_test.result().numpy()
+
                 if (val_loss_th >= val_loss):
                     val_loss_th = val_loss
                     manager.save()
-
                     early_idx = 0
 
                 else:

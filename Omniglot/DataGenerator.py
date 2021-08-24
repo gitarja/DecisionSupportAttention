@@ -63,6 +63,7 @@ class Dataset:
 
     def get_mini_offline_batches(self, n_class, shots=2,  validation=False):
         anchor_positive = np.zeros(shape=(n_class * shots, 28, 28, 1))
+        anchor_labels = np.zeros(shape=(n_class * shots, 28, 28, 1))
         labels = self.labels
         if validation:
             labels = self.val_labels
@@ -74,8 +75,9 @@ class Dataset:
             #set anchor and pair positives
 
             anchor_positive[i*shots:(i+1) * shots] = positive_to_split
+            anchor_labels[i * shots:(i + 1) * shots] = i
 
-        return anchor_positive.astype(np.float32)
+        return anchor_positive.astype(np.float32), anchor_labels
 
 
     def get_mini_pairoffline_batches(self, n_buffer, batch_size, shots=2,  validation=False):
@@ -137,6 +139,7 @@ class Dataset:
 
         if outlier == False:
             label_subsets = random.sample(self.labels, k=num_classes)
+
             for i in range(len(label_subsets)):
                 temp_labels[i] = i
                 ref_labels[i * shots: (i + 1) * shots] = i

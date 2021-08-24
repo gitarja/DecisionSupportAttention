@@ -69,14 +69,16 @@ class FewShotModel(K.models.Model):
         self.relu = tf.keras.layers.ReLU()
         self.batch = K.layers.BatchNormalization()
 
-        self.random_zoomout = tf.keras.layers.experimental.preprocessing.RandomZoom((-0.1, 0.1))
-        self.random_zoomout_neg = tf.keras.layers.experimental.preprocessing.RandomZoom((-0.5, 0.5))
 
 
+        self.data_augment = K.models.Sequential([
+            K.layers.experimental.preprocessing.Rescaling(1/255.)
 
+        ])
 
     def call(self, inputs, training=None, mask=None):
-        z = self.conv_1(inputs)
+        z = self.data_augment(inputs)
+        z = self.conv_1(z)
         z = self.conv_2(z)
         z = self.conv_3(z)
         z = self.conv_4(z)
