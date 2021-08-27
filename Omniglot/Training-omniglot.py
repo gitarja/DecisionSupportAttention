@@ -27,6 +27,7 @@ if __name__ == '__main__':
     parser.add_argument('--n_class', type=int, default=100)
     parser.add_argument('--z_dim', type=int, default=64)
     parser.add_argument('--mean', type=bool, default=False)
+    parser.add_argument('--shots', type=int, default=5)
 
 
     args = parser.parse_args()
@@ -49,7 +50,7 @@ if __name__ == '__main__':
 
     print(args.n_class)
 
-    train_dataset = Dataset(mode="train_val", val_frac=0.05)
+    train_dataset = Dataset(mode="train_val", val_frac=0.01)
 
 
     # training setting
@@ -59,9 +60,8 @@ if __name__ == '__main__':
     batch_size = 256
     ALL_BATCH_SIZE = batch_size * strategy.num_replicas_in_sync
     val_class = len(train_dataset.val_labels)
-    ref_num = 5
     val_loss_th = 1e+3
-    shots = 5
+    shots = args.shots
 
     # training setting
     epochs = 10000
@@ -97,9 +97,8 @@ if __name__ == '__main__':
         # optimizer
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             lr,
-            decay_steps=1000,
-            decay_rate=0.8,
-            staircase=True)
+            decay_steps=2000,
+            decay_rate=0.8)
         siamese_optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
 
         #metrics

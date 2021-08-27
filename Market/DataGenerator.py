@@ -32,31 +32,32 @@ class Dataset:
 
         self.labels = list(self.data.keys())
         if mode == "train_val":
-            random.seed(1)
             random.shuffle(self.labels)
             self.val_labels = self.labels[:int(len(self.labels) * val_frac)]  # take 10% classes as validation
             del self.labels[:int(len(self.labels) * val_frac)]
 
     def get_mini_offline_batches(self, n_class, shots=2, validation=False):
         anchor_positive = np.zeros(shape=(n_class * shots, 128, 64, 3))
+        anchor_labels = np.zeros(shape=(n_class * shots, 1))
         labels = self.labels
         if validation:
             labels = self.val_labels
         label_subsets = random.sample(labels, k=n_class)
+
         for i in range(len(label_subsets)):
+
             if shots> len(self.data[label_subsets[i]]):
                 positive_to_split = random.choices(
                     self.data[label_subsets[i]], k=shots)
             else:
                 positive_to_split = random.sample(
                     self.data[label_subsets[i]], k=shots)
-
-
             # set anchor and pair positives
 
             anchor_positive[i * shots:(i + 1) * shots] = positive_to_split
+            anchor_labels[i * shots:(i + 1) * shots] = i
 
-        return anchor_positive.astype(np.float32)
+        return anchor_positive.astype(np.float32), anchor_labels
 
     # def get_train_batches(self):
 
@@ -140,9 +141,10 @@ class DataTest:
 
 if __name__ == '__main__':
     test_dataset = Dataset("train_val")
+    n_class = 5
     # test_dataset.getTestData()
     # query, labels, references, ref_labels = test_dataset.get_batches()
-    train_data = test_dataset.get_mini_offline_batches(n_class=37, shots=20)
+    train_data, _ = test_dataset.get_mini_offline_batches(n_class=n_class, shots=2)
     print(train_data.shape)
     # print(query.shape)
     # print(references.shape)
@@ -150,18 +152,18 @@ if __name__ == '__main__':
     # for _, data in enumerate(test_data):
     #     print(data)
     #
-    # _, axarr = plt.subplots(nrows=10, ncols=2)
-    #
-    # j=0
-    # for a in range(10):
-    #     for b in range(2):
-    #         temp_image = train_data[j]
-    #         # temp_image = np.stack((temp_image[:, :, :],), axis=-1)
-    #
-    #         temp_image = np.clip(temp_image, 0, 255).astype("uint8")
-    #
-    #         axarr[a, b].imshow(temp_image)
-    #         axarr[a, b].xaxis.set_visible(False)
-    #         axarr[a, b].yaxis.set_visible(False)
-    #         j+=1
-    # plt.show()
+    _, axarr = plt.subplots(nrows=n_class, ncols=2)
+
+    j=0
+    for a in range(n_class):
+        for b in range(2):
+            temp_image = train_data[j]
+            # temp_image = np.stack((temp_image[:, :, :],), axis=-1)
+
+            temp_image = np.clip(tf.image.resize(temp_image, (256, 128)).numpy(), 0, 255).astype("uint8")
+
+            axarr[a, b].imshow(temp_image)
+            axarr[a, b].xaxis.set_visible(False)
+            axarr[a, b].yaxis.set_visible(False)
+            j+=1
+    plt.show()

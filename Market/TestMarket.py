@@ -14,7 +14,7 @@ import glob
 import os
 import pandas as pd
 from sklearn.metrics import euclidean_distances
-from Utils.CustomMetrics import eval_func, average_precision_score_market
+from Utils.CustomMetrics import eval_func, mean_ap
 
 os.environ["TF_XLA_FLAGS"] = "--tf_xla_enable_xla_devices"
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
@@ -80,11 +80,18 @@ for index, row in test_list.iterrows():
         ref_logits[(i + 1) * step_ref:] = model(ref_images[(i + 1) * step_ref:], False)
 
     acc = knn_class(q_logits, q_labels, ref_logits, ref_labels, shots)
-
-    dist = euclidean_distances(q_logits, ref_logits)
-    all_cmc, mAP = eval_func(dist, q_labels, ref_labels, q_cams, ref_cams)
     print(np.average(acc))
+    dist = euclidean_distances(q_logits, ref_logits, squared=True)
+    all_cmc, mAP = eval_func(dist, q_labels, ref_labels, q_cams, ref_cams)
+    print(mAP)
     print(all_cmc)
+    mAP = mean_ap(
+        dist,
+        query_ids=q_labels,
+        gallery_ids=ref_labels,
+        query_cams=q_cams,
+        gallery_cams=ref_cams)
+
     print(mAP)
 
     # y_true = np.tile(np.expand_dims(ref_labels, 0), [len(labels), 1]) == np.tile(np.expand_dims(labels, -1), len(ref_labels))

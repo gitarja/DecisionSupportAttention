@@ -9,7 +9,8 @@ import tensorflow_addons as tfa
 import datetime
 from Market.Conf import TENSOR_BOARD_PATH
 import argparse
-from Utils.CustomLoss import CentroidTriplet, NucleusTriplet
+from Utils.CustomLoss import NucleusTriplet
+from tensorflow_addons.losses import TripletHardLoss
 
 import random
 import os
@@ -24,7 +25,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--margin', type=float, default=0.5)
     parser.add_argument('--soft', type=bool, default=False)
-    parser.add_argument('--n_class', type=int, default=100)
+    parser.add_argument('--n_class', type=int, default=25)
     parser.add_argument('--z_dim', type=int, default=128)
     parser.add_argument('--mean', type=bool, default=False)
 
@@ -44,13 +45,13 @@ if __name__ == '__main__':
             # Memory growth must be set before GPUs have been initialized
             print(e)
 
-    cross_tower_ops = tf.distribute.HierarchicalCopyAllReduce(num_packs=2)
+    cross_tower_ops = tf.distribute.HierarchicalCopyAllReduce(num_packs=3)
     strategy = tf.distribute.MirroredStrategy(cross_device_ops=cross_tower_ops)
 
     print(args.n_class)
 
-    train_dataset = Dataset(mode="train_val", val_frac=0.05)
 
+    train_dataset = Dataset(mode="train_val", val_frac=0.05)
 
     # training setting
     eval_interval = 15
@@ -59,7 +60,7 @@ if __name__ == '__main__':
 
     val_class = len(train_dataset.val_labels)
     val_loss_th = 1e+3
-    shots = 4
+    shots = 5
 
     # training setting
     epochs = 10000
@@ -83,11 +84,11 @@ if __name__ == '__main__':
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    triplet_loss = NucleusTriplet(margin=args.margin, soft=args.soft,  n_shots=shots, mean=args.mean)
+    cluster_loss = NucleusTriplet(margin=args.margin, soft=args.soft,  n_shots=shots, mean=args.mean)
+    triplet_loss = TripletHardLoss(margin=args.margin, soft=args.soft)
 
     with strategy.scope():
         model = RGBModel(z_dim=z_dim, model="res_net")
-
         # check point
         checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
 
@@ -110,31 +111,38 @@ if __name__ == '__main__':
 
 
     with strategy.scope():
-        def compute_triplet_loss(embd, n_class, global_batch_size):
-            per_example_loss = triplet_loss(embd, n_class)
+        def compute_cluster_loss(embd, n_class, global_batch_size):
+            per_example_loss = cluster_loss(embd, n_class)
             return tf.nn.compute_average_loss(per_example_loss)
+
+
+        def compute_triplet_loss(embd, labels, global_batch_size):
+            per_example_loss = triplet_loss(labels, embd)
+            return per_example_loss
 
     with strategy.scope():
 
 
         def train_step(inputs, GLOBAL_BATCH_SIZE=0):
-
+            X, y = inputs
             with tf.GradientTape() as siamese_tape:
-                embeddings = model(inputs, training=True)
-                embd_loss = compute_triplet_loss(embeddings, train_class, train_class * shots)  # triplet loss
+                embeddings = model(X, training=True)
+                embd_loss = compute_cluster_loss(embeddings, train_class, train_class * shots)  # cluster loss
+                # triplet_loss = compute_triplet_loss(embeddings, y, train_class * shots)  # cluster loss
+
+                loss =  embd_loss
                            # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
-            siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
+            siamese_grads = siamese_tape.gradient(loss, model.trainable_weights)
             siamese_optimizer.apply_gradients(zip(siamese_grads, model.trainable_weights))
-            loss_train(embd_loss)
-            return embd_loss
+            loss_train(loss)
+            return loss
 
 
         def val_step(inputs, GLOBAL_BATCH_SIZE=0):
-
-            embeddings = model(inputs, training=False)
-            loss = compute_triplet_loss(embeddings, val_class, val_class * shots)  # triplet loss
-
+            X, y = inputs
+            embeddings = model(X, training=False)
+            loss = compute_cluster_loss(embeddings, val_class, val_class * shots)  # triplet loss
 
             loss_test(loss)
             return loss

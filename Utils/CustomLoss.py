@@ -14,27 +14,18 @@ def off_diagonal(x):
 def normalize(x):
     return (x - tf.reduce_mean(x, 0)) / tf.math.reduce_std(x, 0)
 
-
 def l2_dis(x1, x2):
-    return tf.sqrt(tf.reduce_sum(tf.square(x1 - x2), -1))
+    return tf.math.sqrt(tf.reduce_sum(tf.math.square(x1 - x2), -1))
 
 def l1_dis(x1, x2):
-    return tf.reduce_sum(tf.abs(x1 - x2), -1)
+    return tf.reduce_sum(tf.math.abs(x1 - x2), -1)
+
+def minc_dis(x1, x2, p):
+    return tf.math.pow(tf.reduce_sum(tf.math.pow(tf.math.abs(x1 - x2), p), -1), 1./p)
+
 
 def log_cosh_dis(x1, x2):
     return tf.reduce_sum(tf.math.log(tf.math.cosh(x1 - x2)), -1)
-
-
-def get_inner_dist(x, s, i):
-    loss = x[(i) * s:(i + 1) * s]
-    return
-
-
-def squared_dist(A):
-    expanded_a = tf.expand_dims(A, 1)
-    expanded_b = tf.expand_dims(A, 0)
-    distances = tf.reduce_sum(tf.math.squared_difference(expanded_a, expanded_b), 2)
-    return distances
 
 
 class CentroidTripletSketch():
@@ -135,14 +126,16 @@ class NucleusTriplet():
         N, D = embed.shape
         res_embed = tf.reshape(embed, (n_class, self.n_shots, D))
 
-        # centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
         if self.mean:
             centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
+            dist_to_cens = tf.reshape(l2_dis(tf.expand_dims(centroids, 1), res_embed),
+                                      (n_class, n_class * self.n_shots))
         else:
             centroids = tfp.stats.percentile(res_embed, 50.0, 1, keepdims=True)
+            dist_to_cens = tf.reshape(l1_dis(tf.expand_dims(centroids, 1), res_embed),
+                                          (n_class, n_class * self.n_shots))
 
-        dist_to_cens = tf.reshape(l2_dis(tf.expand_dims(centroids, 1), res_embed),
-                                  (n_class, n_class * self.n_shots))
+
 
         d = tf.reshape(tf.repeat(tf.eye(n_class), self.n_shots), (n_class, n_class * self.n_shots))
         inner_dist = tf.reduce_max(tf.reshape(tf.boolean_mask(dist_to_cens, d == 1), (n_class, self.n_shots)), -1)
@@ -151,6 +144,7 @@ class NucleusTriplet():
 
         if self.soft:
             triplet_loss = tf.math.log1p(tf.math.exp(inner_dist - extra_dist))
+
         else:
             triplet_loss = tf.maximum(0., self.margin + inner_dist - extra_dist)
 

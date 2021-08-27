@@ -1,12 +1,15 @@
-/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --margin=.25  --n_class=150
-/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --margin=.5  --n_class=150
-/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --margin=1.  --n_class=150
-/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --margin=1.5  --n_class=150
-/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --margin=3.  --n_class=150
-/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --margin=.25  --n_class=150 --mean=True
-/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --margin=.5  --n_class=150 --mean=True
-/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --margin=1.  --n_class=150 --mean=True
-/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --margin=1.5  --n_class=150 --mean=True
-/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --margin=3.  --n_class=150 --mean=True
-/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --margin=3.  --n_class=150 --soft=True
-/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --margin=3.  --n_class=150 --soft=True --mean=True
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=25 --soft=True --mean=True --shots=3
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=50 --soft=True --mean=True --shots=3
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=75 --soft=True --mean=True --shots=3
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=100 --soft=True --mean=True --shots=3
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=150 --soft=True --mean=True --shots=3
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=25 --soft=True --mean=True --shots=5
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=50 --soft=True --mean=True --shots=5
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=75 --soft=True --mean=True --shots=5
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=100 --soft=True --mean=True --shots=5
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=150 --soft=True --mean=True --shots=5
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=25 --soft=True --mean=True --shots=10
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=50 --soft=True --mean=True --shots=10
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=75 --soft=True --mean=True --shots=10
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=100 --soft=True --mean=True --shots=10
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/Omniglot/Training-omniglot.py --n_class=150 --soft=True --mean=True --shots=10
