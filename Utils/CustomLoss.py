@@ -14,8 +14,11 @@ def off_diagonal(x):
 def normalize(x):
     return (x - tf.reduce_mean(x, 0)) / tf.math.reduce_std(x, 0)
 
-def l2_dis(x1, x2):
-    return tf.math.sqrt(tf.reduce_sum(tf.math.square(x1 - x2), -1))
+def l2_dis(x1, x2, w=None):
+    if w is not None:
+        return tf.math.sqrt(tf.reduce_sum(tf.math.square(x1 - x2)/w, -1))
+    else:
+        return tf.sqrt(tf.reduce_sum(tf.multiply(x1, x1), -1) + tf.reduce_sum(tf.multiply(x2, x2), -1) - 2 * tf.reduce_sum(tf.multiply(x1, x2), -1))
 
 def l1_dis(x1, x2):
     return tf.reduce_sum(tf.math.abs(x1 - x2), -1)
@@ -87,6 +90,7 @@ class CentroidTriplet():
         # comver tensor
         embed = tf.cast(embed, tf.float32)
         N, D = embed.shape
+
         res_embed = tf.reshape(embed, (n_class, self.n_shots, D))
 
         # centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
@@ -100,12 +104,15 @@ class CentroidTriplet():
 
         d = tf.reshape(tf.repeat(tf.eye(n_class), self.n_shots), (n_class, n_class * self.n_shots))
         inner_dist = tf.reshape(tf.boolean_mask(dist_to_cens, d == 1), (N, -1))
-        extra_dist = tf.reduce_min(
-            tf.reshape(tf.boolean_mask(dist_to_cens, d == 0), (n_class, n_class - 1, self.n_shots)), axis=1)
-        triplet_loss = tf.maximum(0., self.margin + inner_dist - tf.reshape(extra_dist, (N, -1)))
+        extra_dist = tf.reshape(tf.reduce_min(
+            tf.reshape(tf.boolean_mask(dist_to_cens, d == 0), (n_class, n_class - 1, self.n_shots)), axis=1),  (N, -1))
+
 
         if self.soft:
-            triplet_loss = tf.square(triplet_loss)
+            triplet_loss = tf.math.log1p(tf.math.exp(inner_dist - extra_dist))
+
+        else:
+            triplet_loss = tf.maximum(0., self.margin + inner_dist - extra_dist)
 
         return triplet_loss
 
@@ -125,25 +132,31 @@ class NucleusTriplet():
         embed = tf.cast(embed, tf.float32)
         N, D = embed.shape
         res_embed = tf.reshape(embed, (n_class, self.n_shots, D))
-
+        # K = n_class - 1
+        # NK = (self.n_shots * n_class) - K
         if self.mean:
             centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
             dist_to_cens = tf.reshape(l2_dis(tf.expand_dims(centroids, 1), res_embed),
                                       (n_class, n_class * self.n_shots))
+            cens_to_cens =  tf.reshape(l2_dis(tf.expand_dims(centroids, 1), centroids), (n_class, n_class))
+
         else:
             centroids = tfp.stats.percentile(res_embed, 50.0, 1, keepdims=True)
             dist_to_cens = tf.reshape(l1_dis(tf.expand_dims(centroids, 1), res_embed),
                                           (n_class, n_class * self.n_shots))
 
 
-
         d = tf.reshape(tf.repeat(tf.eye(n_class), self.n_shots), (n_class, n_class * self.n_shots))
+        d_cens = tf.eye(n_class)
         inner_dist = tf.reduce_max(tf.reshape(tf.boolean_mask(dist_to_cens, d == 1), (n_class, self.n_shots)), -1)
         extra_dist = tf.reduce_min(tf.reshape(tf.boolean_mask(dist_to_cens, d == 0), (n_class, (n_class - 1) * self.n_shots)), axis=-1)
+        inter_dist =  tf.reduce_min(tf.reshape(tf.boolean_mask(cens_to_cens, d_cens == 0), (n_class, (n_class - 1))), axis=-1)
+
 
 
         if self.soft:
-            triplet_loss = tf.math.log1p(tf.math.exp(inner_dist - extra_dist))
+            neg_cluster = 0.5 * (inter_dist + extra_dist)
+            triplet_loss = tf.math.log1p(tf.math.exp(inner_dist- neg_cluster ))
 
         else:
             triplet_loss = tf.maximum(0., self.margin + inner_dist - extra_dist)
@@ -282,9 +295,12 @@ class BarlowTwins(K.losses.Loss):
 if __name__ == '__main__':
     import numpy as np
 
-    b = tf.transpose(tf.Variable([[1., 2., 3., 4., 5., 6.]]))
+    # b = tf.transpose(tf.Variable([[1., 2., 3., 4., 5., 6.]]))
+
     n_class = 3
     n_shots = 2
-    a = tf.ones((n_shots * n_class, 1)) * b
-    loss = NucleusTriplet(n_shots=n_shots)
+    # a = tf.ones((n_shots * n_class, 1)) * b
+    a =  tf.random.normal((n_class * n_shots, 10))
+    a = tf.math.l2_normalize(a, -1)
+    loss = NucleusTriplet(n_shots=n_shots, mean=True, soft=True)
     loss(a, n_class=n_class)

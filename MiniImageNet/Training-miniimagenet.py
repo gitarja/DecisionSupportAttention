@@ -1,22 +1,35 @@
+import os.path
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import tensorflow as tf
-
 tf.keras.backend.set_floatx('float32')
 from MiniImageNet.DataGenerator import Dataset
 from NNModels.FewShotModel import FewShotModel
-from NNModels.AdversarialModel import DiscriminatorModel
-import tensorflow_addons as tfa
-from Utils.PriorFactory import GaussianMixture, Gaussian
-from Utils.Libs import euclidianMetric, computeACC, cosineSimilarity
-import numpy as np
+from NNModels.RGBModel import RGBModel
+from Utils.CustomLoss import NucleusTriplet
 import datetime
 from MiniImageNet.Conf import TENSOR_BOARD_PATH
 import argparse
+from Utils.Libs import classify
 
+import random
+import os
+
+os.environ["TF_XLA_FLAGS"] = "--tf_xla_enable_xla_devices"
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2"
+random.seed(2021)  # set seed
+tf.random.set_seed(2021)
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--adversarial', type=bool, default=False)
-    parser.add_argument('--double_trip', type=bool, default=False)
+    parser.add_argument('--margin', type=float, default=0.5)
+    parser.add_argument('--soft', type=bool, default=False)
+    parser.add_argument('--n_class', type=int, default=25)
+    parser.add_argument('--z_dim', type=int, default=64)
+    parser.add_argument('--mean', type=bool, default=False)
+    parser.add_argument('--shots', type=int, default=5)
+
 
     args = parser.parse_args()
 
@@ -33,136 +46,170 @@ if __name__ == '__main__':
             # Memory growth must be set before GPUs have been initialized
             print(e)
 
-    train_dataset = Dataset(mode="train_val", val_frac=0.1)
-    test_dataset = Dataset(mode="test")
+    cross_tower_ops = tf.distribute.HierarchicalCopyAllReduce(num_packs=2)
+    strategy = tf.distribute.MirroredStrategy(cross_device_ops=cross_tower_ops)
+
+    print(args.n_class)
+
+    train_dataset = Dataset(mode="training")
+    val_dataset = Dataset(mode="validation")
+
 
     # training setting
-    eval_interval = 1
-    train_shots = 20
-    validation_shots = 20
-    classes = 5
-    inner_batch_size = 25
-    inner_iters = 4
-    n_buffer = 100
-    ref_num = 5
+    eval_interval = 15
+    train_class = args.n_class
+
+
+    val_class = args.n_class
     val_loss_th = 1e+3
+    val_acc_th = 0.
+    shots = args.shots
 
     # training setting
-    epochs = 50
-    episodes = 100
+    epochs = 30000
     lr = 1e-3
 
+
+    # early stopping
+    early_th = 100
+    early_idx = 0
+
     # siamese and discriminator hyperparameter values
-    z_dim = 64
+    z_dim = args.z_dim
 
     # tensor board
-    log_dir = TENSOR_BOARD_PATH + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    checkpoint_path = TENSOR_BOARD_PATH + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "\\model"
-    if args.adversarial == True:
-        log_dir = TENSOR_BOARD_PATH + "adv\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        checkpoint_path = TENSOR_BOARD_PATH + "adv\\" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "\\model"
-    train_log_dir = log_dir + "\\train"
-    test_log_dir = log_dir + "\\test"
+    log_dir = TENSOR_BOARD_PATH + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double"
+    checkpoint_path = TENSOR_BOARD_PATH + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "_double" + "/model"
+
+    train_log_dir = log_dir + "/train"
+    test_log_dir = log_dir + "/test"
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    if args.double_trip == True:
-        triplet_loss = tfa.losses.TripletSemiHardLoss()
-    else:
-        triplet_loss = tfa.losses.TripletSemiHardLoss()
-    binary_loss = tf.losses.BinaryCrossentropy(from_logits=True)
+    triplet_loss = NucleusTriplet(margin=args.margin, soft=args.soft,  n_shots=shots, mean=args.mean)
 
-    # optimizer
-    siamese_optimizer = tf.optimizers.SGD(lr=lr)
-    if args.adversarial == True:  # using adversarial as well
-        discriminator_optimizer = tf.optimizers.SGD(lr=lr / 3)
-        generator_optimizer = tf.optimizers.SGD(lr=lr)
+    with strategy.scope():
+        model = FewShotModel(z_dim=z_dim)
+        # check point
+        checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
 
-    model = FewShotModel(filters=64, z_dim=z_dim)
-    disc_model = DiscriminatorModel(n_hidden=z_dim, n_output=1, dropout_rate=0.5)
+        manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=early_th)
+        # optimizer
+        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+            lr,
+            decay_steps=2000,
+            decay_rate=0.8)
+        siamese_optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
 
-    # check point
-    checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
-    manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=3)
+        #metrics
+        # train
+        loss_train = tf.keras.metrics.Mean()
 
-    # validation dataset
-    val_dataset = train_dataset.get_mini_batches(n_buffer,
-                                                 inner_batch_size, inner_iters,
-                                                 validation_shots, classes, validation=True,
-                                                 )
+        # test
+        loss_test = tf.keras.metrics.Mean()
+        acc_test = tf.keras.metrics.Mean()
 
-    for epoch in range(epochs):
-        # dataset
-        train_loss = []
-        for ep in range(episodes):
-            mini_dataset = train_dataset.get_mini_batches(n_buffer,
-                                                          inner_batch_size, inner_iters,
-                                                          train_shots, classes, validation=False,
-                                                          )
 
-            for images, labels in mini_dataset:
-                # sample from gaussian mixture
-                if args.adversarial == True:  # using adversarial as well
-                    samples = Gaussian(len(images), z_dim, n_labels=classes)
 
-                with tf.GradientTape() as siamese_tape, tf.GradientTape() as discriminator_tape, tf.GradientTape() as generator_tape:
-                    train_logits = model(images, training=True)
-                    embd_loss = triplet_loss(labels, train_logits)  # triplet loss
-                    train_loss.append(embd_loss)
+    with strategy.scope():
+        def compute_triplet_loss(embd, n_class, global_batch_size):
+            per_example_loss = triplet_loss(embd, n_class)
+            return tf.nn.compute_average_loss(per_example_loss)
 
-                    if args.adversarial == True:  # using adversarial as well
-                        # generative
+    with strategy.scope():
 
-                        z_fake = disc_model(train_logits, training=True)
-                        z_true = disc_model(samples, training=True)
 
-                        # discriminator loss
-                        D_loss_fake = binary_loss(z_fake, tf.zeros_like(z_fake))
-                        D_loss_real = binary_loss(z_true, tf.ones_like(z_true))
-                        D_loss = D_loss_real + D_loss_fake
+        def train_step(inputs, GLOBAL_BATCH_SIZE=0):
+            X, y = inputs
+            with tf.GradientTape() as siamese_tape, tf.GradientTape():
+                embeddings = model(X, training=True)
+                embd_loss = compute_triplet_loss(embeddings, train_class, GLOBAL_BATCH_SIZE)  # triplet loss
+                           # Use the gradient tape to automatically retrieve
+            # the gradients of the trainable variables with respect to the loss.
+            siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
+            siamese_optimizer.apply_gradients(zip(siamese_grads, model.trainable_weights))
+            loss_train(embd_loss)
+            return embd_loss
 
-                        # generator loss
-                        G_loss = binary_loss(z_fake, tf.ones_like(z_fake))
 
-                    # Use the gradient tape to automatically retrieve
-                    # the gradients of the trainable variables with respect to the loss.
-                siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
-                siamese_optimizer.apply_gradients(zip(siamese_grads, model.trainable_weights))
+        def val_step(inputs, GLOBAL_BATCH_SIZE=0):
+            query, labels, references, ref_labels = inputs
+            ref_logits = model(references, training=False)
+            q_logits =  model(query, training=False)
+            loss = compute_triplet_loss(ref_logits, val_class, GLOBAL_BATCH_SIZE)  # triplet loss
 
-                if args.adversarial == True:  # using adversarial as well
-                    discriminator_grads = discriminator_tape.gradient(D_loss, disc_model.trainable_weights)
-                    generator_grads = generator_tape.gradient(G_loss, disc_model.trainable_weights)
-                    discriminator_optimizer.apply_gradients(zip(discriminator_grads, disc_model.trainable_weights))
-                    generator_optimizer.apply_gradients(zip(generator_grads, disc_model.trainable_weights))
+            acc = classify(q_logits, labels, ref_logits,  shots)
 
-        if (epoch + 1) % eval_interval == 0:
-            val_loss = []
-            for test_images, test_labels in val_dataset:
-                logits = model(test_images, training=False)
-                loss = triplet_loss(test_labels, logits)
-                val_loss.append(loss)
-            val_loss = tf.reduce_mean(val_loss)
-            if (val_loss_th > val_loss):
-                val_loss_th = val_loss
-                manager.save()
+            loss_test(loss)
+            acc_test(acc)
+            return loss
 
-            with train_summary_writer.as_default():
-                tf.summary.scalar('loss', tf.reduce_mean(train_loss), step=epoch)
-            with test_summary_writer.as_default():
-                tf.summary.scalar('loss', val_loss, step=epoch)
-            print("Training loss=%f, validation loss=%f" % (
-            tf.reduce_mean(train_loss), val_loss))  # print train and val losses
+        def reset_metric():
+            loss_train.reset_states()
+            loss_test.reset_states()
+            acc_test.reset_states()
 
-    # dataset
-    shots = 5
-    test_data = test_dataset.get_batches(shots=shots, num_classes=5)
-    acc_avg = []
-    for _, (query, labels, references) in enumerate(test_data):
-        val_logits = model(query, training=False)
-        ref_logits = model(references, training=False)
-        dist_metrics = euclidianMetric(val_logits, ref_logits, ref_num=shots)
-        val_acc = computeACC(dist_metrics, labels)
-        acc_avg.append(val_acc)
+    with strategy.scope():
+        # `experimental_run_v2` replicates the provided computation and runs it
+        # with the distributed input.
+        @tf.function
+        def distributed_train_step(dataset_inputs, GLOBAL_BATCH_SIZE):
+            per_replica_losses = strategy.run(train_step,
+                                                              args=(dataset_inputs, GLOBAL_BATCH_SIZE))
+            return strategy.reduce(tf.distribute.ReduceOp.SUM, per_replica_losses,
+                                   axis=None)
 
-    print(np.average(acc_avg))
+        @tf.function
+        def distributed_test_step(dataset_inputs, GLOBAL_BATCH_SIZE):
+            return strategy.run(val_step, args=(dataset_inputs,GLOBAL_BATCH_SIZE))
+
+
+
+
+        for epoch in range(epochs):
+
+            if epoch == 2000:
+                siamese_optimizer.beta_1 = 0.5
+            # dataset
+            train_inputs = train_dataset.get_mini_offline_batches(train_class,
+                                                                  shots=shots,
+
+
+                                                                  )
+
+            model(train_inputs[0])
+            distributed_train_step(train_inputs, train_class * shots)
+
+            if (epoch + 1) % eval_interval == 0:
+                # validation dataset
+                for val_epoch in range(300):
+                    # val_inputs = val_dataset.get_mini_offline_batches(val_class,
+                    #                                                   shots=shots,
+                    #                                                   )
+                    val_inputs = val_dataset.get_batches(shots, train_class)
+                    distributed_test_step(val_inputs, val_class * shots)
+                with train_summary_writer.as_default():
+                    tf.summary.scalar('loss', loss_train.result().numpy(), step=epoch)
+                with test_summary_writer.as_default():
+                    tf.summary.scalar('loss', loss_test.result().numpy(), step=epoch)
+                    tf.summary.scalar('acc', acc_test.result().numpy(), step=epoch)
+                print("Epoch: %f, Training loss=%f, validation loss=%f, validation acc=%f" % (epoch,
+                                                                           loss_train.result().numpy(),
+                                                                           loss_test.result().numpy(), acc_test.result().numpy()))  # print train and val losses
+
+                val_loss = loss_test.result().numpy()
+                val_acc = acc_test.result().numpy()
+
+                if val_loss_th >= val_loss or val_acc_th <= val_acc:
+                    val_loss_th = val_loss
+                    val_acc_th = val_acc
+                    manager.save()
+                    early_idx = 0
+
+                else:
+                    early_idx += 1
+                reset_metric()
+                # if early_idx == early_th:
+                #     break
+

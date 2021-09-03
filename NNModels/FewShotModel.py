@@ -64,16 +64,12 @@ class FewShotModel(K.models.Model):
 
 
 
-        self.data_norm =  K.layers.experimental.preprocessing.Rescaling(1/255.)
-
-
     def call(self, inputs, training=None, mask=None):
-        z = self.data_norm(inputs)
-        z = self.conv_1(z, training=training)
+        z = self.conv_1(inputs, training=training)
         z = self.conv_2(z, training=training)
         z = self.conv_3(z, training=training)
         z = self.conv_4(z, training=training)
-        z = self.flat(z)
+        z =  self.batch(self.flat(z), training=training)
         z = self.normalize(self.dense(z))
         return z
 

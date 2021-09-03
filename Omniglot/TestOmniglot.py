@@ -27,7 +27,7 @@ def knn_class(q_logits, labels, ref_logits, ref_labels, shots=5):
 
 # dataset
 test_dataset = Dataset(mode="test")
-num_classes = 50
+num_classes = 5
 shots = 5
 
 # checkpoint

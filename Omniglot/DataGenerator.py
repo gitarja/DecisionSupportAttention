@@ -23,7 +23,7 @@ class Dataset:
         self.data = {}
 
         def extraction(image, degree=0):
-            image = tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1)
+            image = tf.expand_dims(tf.image.convert_image_dtype(image, tf.float32), -1) / 255.
             if degree!=0:
                 image = tf.image.rot90(image, k=degree)
             return image

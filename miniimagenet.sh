@@ -1,0 +1,2 @@
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/MiniImageNet/Training-miniimagenet.py --n_class=5 --soft=True --mean=True --shots=5
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/MiniImageNet/Training-miniimagenet.py --n_class=20 --soft=True --mean=True --shots=5

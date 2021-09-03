@@ -1,7 +1,6 @@
 import tensorflow.keras as K
 import tensorflow as tf
-from tensorflow.keras.applications import resnet_v2 as rv2
-from tensorflow.python.keras.applications import resnet_v2
+from tensorflow.python.keras.applications import inception_resnet_v2
 
 _RGB_MEAN = [123.68, 116.78, 103.94]
 
@@ -115,9 +114,9 @@ class RGBModel(K.models.Model):
     def __init__(self, z_dim=64, model="res_net"):
         super(RGBModel, self).__init__()
         if model == "res_net":
-            base_model = K.applications.ResNet101V2(
+            base_model = K.applications.InceptionResNetV2(
                 include_top=False,
-
+                weights=None,
                 pooling=None,
                 input_tensor=None)
 
@@ -133,13 +132,13 @@ class RGBModel(K.models.Model):
         self.normalize = tf.keras.layers.Lambda(lambda x: tf.math.l2_normalize(x, axis=-1))
 
         self.relu = K.layers.ReLU()
-        self.data_augment = K.models.Sequential([
-            K.layers.experimental.preprocessing.RandomFlip("horizontal"),
-            K.layers.experimental.preprocessing.Resizing(int(256 * 1.125), int(128 * 1.125)),
-            K.layers.experimental.preprocessing.RandomCrop(256, 128)
-        ])
-
-        self.resize = K.layers.experimental.preprocessing.Resizing(256, 128)
+        # self.data_augment = K.models.Sequential([
+        #     K.layers.experimental.preprocessing.RandomFlip("horizontal"),
+        #     K.layers.experimental.preprocessing.Resizing(int(256 * 1.125), int(128 * 1.125)),
+        #     K.layers.experimental.preprocessing.RandomCrop(256, 128)
+        # ])
+        #
+        # self.resize = K.layers.experimental.preprocessing.Resizing(256, 128)
 
 
 
@@ -152,11 +151,12 @@ class RGBModel(K.models.Model):
         :param mask:
         :return:
         '''
-        if training:
-            images = self.data_augment(inputs, training=training)
-        else:
-            images = self.resize(inputs)
-        images = images - tf.constant(_RGB_MEAN, dtype=tf.float32, shape=(1, 1, 1, 3))
+        # if training:
+        #     images = self.data_augment(inputs, training=training)
+        # else:
+        #     images = self.resize(inputs)
+        # images = images - tf.constant(_RGB_MEAN, dtype=tf.float32, shape=(1, 1, 1, 3))
+        images = inception_resnet_v2.preprocess_input(inputs)
         z = self.flat(self.base(images))
         # z = self.relu(self.batch0(self.dense0(z)))
         z = self.normalize(self.dense(z))

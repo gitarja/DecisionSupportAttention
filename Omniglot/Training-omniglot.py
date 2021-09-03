@@ -5,7 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 import tensorflow as tf
 tf.keras.backend.set_floatx('float32')
 from Omniglot.DataGenerator import Dataset
-from NNModels.FewShotModel import FewShotModel, DeepMetric
+from NNModels.FewShotModel import FewShotModel
 import datetime
 from Omniglot.Conf import TENSOR_BOARD_PATH
 import argparse
@@ -89,9 +89,8 @@ if __name__ == '__main__':
 
     with strategy.scope():
         model = FewShotModel(filters=64, z_dim=z_dim)
-        disc_model = DeepMetric()
         # check point
-        checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model, deep_metric_model=disc_model)
+        checkpoint = tf.train.Checkpoint(step=tf.Variable(1), siamese_model=model)
 
         manager = tf.train.CheckpointManager(checkpoint, checkpoint_path, max_to_keep=early_th)
         # optimizer

@@ -4,6 +4,13 @@ import numpy as np
 from sklearn.neighbors import KNeighborsClassifier,RadiusNeighborsClassifier
 from sklearn.metrics import euclidean_distances
 
+
+def l2_dis(x1, x2, w=None):
+    if w is not None:
+        return tf.math.sqrt(tf.reduce_sum(tf.math.square(x1 - x2)/w, -1))
+    else:
+        return tf.sqrt(tf.reduce_sum(tf.multiply(x1, x1), -1) + tf.reduce_sum(tf.multiply(x2, x2), -1) - 2 * tf.reduce_sum(tf.multiply(x1, x2), -1))
+
 def euclidianMetric(query, references, labels, ref_num=1):
     n = query.shape[0]
     q = query# n-class * k-shot
@@ -46,6 +53,15 @@ def kNN(query, q_labels, references, ref_labels, ref_num=1, th=0.5, return_pred=
     else:
         return classifier.predict(X_test) == q_y
 
+def classify(q_logits, labels, ref_logits, shots=5):
+    N, D = ref_logits.shape
 
+    ref_logits = tf.reduce_mean(tf.reshape(ref_logits, (len(labels), shots, D)), 1) # mean
+
+    distances = l2_dis(tf.expand_dims(q_logits, 1) , ref_logits)
+
+    preds = tf.argmin(distances, -1)
+
+    return preds == tf.cast(labels, dtype=preds.dtype)
 
 
