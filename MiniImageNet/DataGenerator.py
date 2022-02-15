@@ -1,6 +1,7 @@
 from MiniImageNet.Conf import DATASET_PATH
 import pickle
 import tensorflow as tf
+import tensorflow.keras as K
 import matplotlib.pyplot as plt
 import numpy as np
 import random
@@ -28,8 +29,20 @@ class Dataset:
         self.data = {}
         mean = np.array([0.485, 0.456, 0.406])
         std =  np.array([0.229, 0.224, 0.225])
+
+        data_preprocess = K.models.Sequential([
+            # K.layers.experimental.preprocessing.Resizing(height=92, width=92),
+            # K.layers.experimental.preprocessing.CenterCrop(height=84, width=84),
+            K.layers.experimental.preprocessing.Rescaling(1/255.),
+            K.layers.experimental.preprocessing.Normalization(mean=mean, variance=std)
+        ])
+
         def extraction(image):
-            image = ((image / 255.) - mean) / std
+            # tf.image.central_crop
+            image = tf.expand_dims(image, 0)
+            image = data_preprocess(image)
+            # image = image / 255.
+            # image = (image - mean) / std
             return image
 
         images = ds["image_data"]
@@ -40,7 +53,7 @@ class Dataset:
                 label = str(i)
                 if label not in self.data:
                     self.data[label] = []
-                self.data[label].append(extraction(images[i, l, :, :, :]))
+                self.data[label].append(extraction(images[i, l, :, :, :])[0])
 
         self.labels = list(self.data.keys())
 
@@ -62,10 +75,9 @@ class Dataset:
 
         return anchor_positive.astype(np.float32), anchor_labels
 
-    def get_batches(self, shots, num_classes):
-
-        temp_labels = np.zeros(shape=(num_classes))
-        temp_images = np.zeros(shape=(num_classes, 84, 84, 3))
+    def get_batches(self, shots, num_classes, num_query=1):
+        temp_labels = np.zeros(shape=(num_classes * num_query))
+        temp_images = np.zeros(shape=(num_classes * num_query, 84, 84, 3))
         ref_images = np.zeros(shape=(num_classes * shots, 84, 84, 3))
         ref_labels = np.zeros(shape=(num_classes * shots))
 
@@ -74,14 +86,18 @@ class Dataset:
         for idx in range(0, len(labels), num_classes):
 
             for i in range(len(label_subsets)):
-                temp_labels[i] = i
+                temp_labels[i * num_query :  (i + 1) * num_query] = i
                 ref_labels[i * shots: (i + 1) * shots] = i
                 # sample images
-                images_to_split = random.sample(
-                    self.data[label_subsets[i]], k=shots + 1)
+                if (num_query + shots) > len(self.data[label_subsets[i]]):
+                    images_to_split = random.choices(
+                        self.data[label_subsets[i]], k=shots + num_query)
+                else:
+                    images_to_split = random.sample(
+                        self.data[label_subsets[i]], k=shots + num_query)
 
-                temp_images[i] = images_to_split[-1]
-                ref_images[i * shots: (i + 1) * shots] = images_to_split[:-1]
+                temp_images[i * num_query: (i + 1) * num_query] = images_to_split[-num_query:]
+                ref_images[i * shots: (i + 1) * shots] = images_to_split[:-num_query]
 
             return temp_images.astype(np.float32), temp_labels.astype(np.int32), ref_images.astype(np.float32),  ref_labels.astype(np.int32)
 

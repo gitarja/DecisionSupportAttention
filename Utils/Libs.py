@@ -5,11 +5,8 @@ from sklearn.neighbors import KNeighborsClassifier,RadiusNeighborsClassifier
 from sklearn.metrics import euclidean_distances
 
 
-def l2_dis(x1, x2, w=None):
-    if w is not None:
-        return tf.math.sqrt(tf.reduce_sum(tf.math.square(x1 - x2)/w, -1))
-    else:
-        return tf.sqrt(tf.reduce_sum(tf.multiply(x1, x1), -1) + tf.reduce_sum(tf.multiply(x2, x2), -1) - 2 * tf.reduce_sum(tf.multiply(x1, x2), -1))
+def l2_dis(x1, x2):
+     return tf.sqrt(tf.reduce_sum(tf.multiply(x1, x1), -1) + tf.reduce_sum(tf.multiply(x2, x2), -1) - 2 * tf.reduce_sum(tf.multiply(x1, x2), -1))
 
 def euclidianMetric(query, references, labels, ref_num=1):
     n = query.shape[0]
@@ -43,7 +40,7 @@ def kNN(query, q_labels, references, ref_labels, ref_num=1, th=0.5, return_pred=
     X_test = query
     y = ref_labels + 1
     classifier = KNeighborsClassifier(n_neighbors=ref_num, metric="euclidean", algorithm="kd_tree")
-    classifier.fit(X_train, y)
+    classifier.fit(X_train, np.unique(y))
 
 
     q_y = q_labels + 1
@@ -53,12 +50,13 @@ def kNN(query, q_labels, references, ref_labels, ref_num=1, th=0.5, return_pred=
     else:
         return classifier.predict(X_test) == q_y
 
-def classify(q_logits, labels, ref_logits, shots=5):
-    N, D = ref_logits.shape
+def classify(q_logits, labels, ref_logits, n_class=5, n_shots=5, mean=True):
+    N, _ = q_logits.shape
+    _, D = ref_logits.shape
 
-    ref_logits = tf.reduce_mean(tf.reshape(ref_logits, (len(labels), shots, D)), 1) # mean
+    centroids = tf.reduce_mean(tf.reshape(ref_logits, (n_class, n_shots, D)), 1) # mean
 
-    distances = l2_dis(tf.expand_dims(q_logits, 1) , ref_logits)
+    distances = l2_dis(tf.expand_dims(q_logits, 1), centroids)
 
     preds = tf.argmin(distances, -1)
 

@@ -14,12 +14,13 @@ def off_diagonal(x):
 def normalize(x):
     return (x - tf.reduce_mean(x, 0)) / tf.math.reduce_std(x, 0)
 
-def l2_dis(x1, x2, w=None):
-    if w is not None:
-        return tf.math.sqrt(tf.reduce_sum(tf.math.square(x1 - x2)/w, -1))
+def l2_dis(x1, x2, square=False):
+    if square:
+        return tf.reduce_sum(tf.math.square(x1 - x2), -1)
     else:
         return tf.sqrt(tf.reduce_sum(tf.multiply(x1, x1), -1) + tf.reduce_sum(tf.multiply(x2, x2), -1) - 2 * tf.reduce_sum(tf.multiply(x1, x2), -1))
-
+def ln_dis(x1, x2, n=2.):
+    return tf.math.pow(tf.reduce_sum(tf.math.pow(x1 - x2, n), -1), 1/n)
 def l1_dis(x1, x2):
     return tf.reduce_sum(tf.math.abs(x1 - x2), -1)
 
@@ -78,88 +79,95 @@ class CentroidTripletSketch():
 
 class CentroidTriplet():
 
-    def __init__(self, margin=0.5, soft=False, n_shots=5, mean=False):
+    def __init__(self, beta=0.5, margin=0.5, soft=False, mean=False):
         super(CentroidTriplet, self).__init__()
+        self.beta = beta
         self.margin = margin
-        self.n_shots = n_shots
         self.soft = soft
         self.mean = mean
 
-    def __call__(self, embed, n_class=5):
+    def __call__(self, embed, n_class=5,  n_shots=5):
         embed = ops.convert_to_tensor_v2(embed, name="embed")
         # comver tensor
         embed = tf.cast(embed, tf.float32)
         N, D = embed.shape
 
-        res_embed = tf.reshape(embed, (n_class, self.n_shots, D))
+        res_embed = tf.reshape(embed, (n_class, n_shots, D))
 
-        # centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
         if self.mean:
             centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
+            dist_to_cens = tf.reshape(l2_dis(tf.expand_dims(res_embed, 1), centroids),
+                                                  (n_class, n_class * n_shots))
+            cens_to_cens = tf.reshape(l2_dis(tf.expand_dims(centroids, 1), centroids),
+                                                  (n_class, n_class))
         else:
             centroids = tfp.stats.percentile(res_embed, 50.0, 1, keepdims=True)
 
-        dist_to_cens = tf.reshape(l2_dis(tf.expand_dims(res_embed, 1), centroids),
-                                  (n_class, n_class * self.n_shots))
+            dist_to_cens = tf.reshape(l1_dis(tf.expand_dims(res_embed, 1), centroids),
+                                                  (n_class, n_class * n_shots))
 
-        d = tf.reshape(tf.repeat(tf.eye(n_class), self.n_shots), (n_class, n_class * self.n_shots))
-        inner_dist = tf.reshape(tf.boolean_mask(dist_to_cens, d == 1), (N, -1))
-        extra_dist = tf.reshape(tf.reduce_min(
-            tf.reshape(tf.boolean_mask(dist_to_cens, d == 0), (n_class, n_class - 1, self.n_shots)), axis=1),  (N, -1))
-
+        d = tf.reshape(tf.repeat(tf.eye(n_class), n_shots), (n_class, n_class * n_shots))
+        d_cen = tf.eye(n_class)
+        l_pos = tf.reduce_max(tf.reshape(tf.boolean_mask(dist_to_cens, d == 1), (n_class, n_shots)), -1)
+        l_neg = tf.reduce_min(tf.reshape(tf.boolean_mask(cens_to_cens, d_cen == 0), (n_class, n_class-1)), -1)
 
         if self.soft:
-            triplet_loss = tf.math.log1p(tf.math.exp(inner_dist - extra_dist))
-
+            triplet_loss = tf.math.log1p(tf.math.exp(-l_neg / (l_pos + 1e-13)))
         else:
-            triplet_loss = tf.maximum(0., self.margin + inner_dist - extra_dist)
+
+            triplet_loss = tf.math.maximum(0., self.beta - (l_neg / (l_pos + 1e-13)))
 
         return triplet_loss
 
 
 class NucleusTriplet():
 
-    def __init__(self, margin=0.5, soft=False, n_shots=5, mean=False):
+    def __init__(self, beta=0.5, margin=0.5, soft=False, mean=True):
         super(NucleusTriplet, self).__init__()
         self.margin = margin
-        self.n_shots = n_shots
+        self.beta = beta
         self.soft = soft
         self.mean = mean
 
-    def __call__(self, embed, n_class=5):
-        embed = ops.convert_to_tensor_v2(embed, name="embed")
+    def __call__(self, query, labels, support, n_class=None, n_shots=None, n_query=None):
+        query = ops.convert_to_tensor_v2(query, name="query")
+        support = ops.convert_to_tensor_v2(support, name="support")
+        labels = ops.convert_to_tensor_v2(labels, name="labels")
         # comver tensor
-        embed = tf.cast(embed, tf.float32)
-        N, D = embed.shape
-        res_embed = tf.reshape(embed, (n_class, self.n_shots, D))
-        # K = n_class - 1
-        # NK = (self.n_shots * n_class) - K
-        if self.mean:
-            centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
-            dist_to_cens = tf.reshape(l2_dis(tf.expand_dims(centroids, 1), res_embed),
-                                      (n_class, n_class * self.n_shots))
-            cens_to_cens =  tf.reshape(l2_dis(tf.expand_dims(centroids, 1), centroids), (n_class, n_class))
+        query = tf.cast(query, tf.float32)
+        support = tf.cast(support, tf.float32)
+        labels = tf.cast(labels, tf.int32)
 
-        else:
-            centroids = tfp.stats.percentile(res_embed, 50.0, 1, keepdims=True)
-            dist_to_cens = tf.reshape(l1_dis(tf.expand_dims(centroids, 1), res_embed),
-                                          (n_class, n_class * self.n_shots))
+        #convert labels to one hot
+        labels_mask = tf.squeeze(tf.one_hot(labels, n_class))
+        N, D = query.shape
+
+        res_support = tf.reshape(support, (n_class, n_shots, D))
 
 
-        d = tf.reshape(tf.repeat(tf.eye(n_class), self.n_shots), (n_class, n_class * self.n_shots))
-        d_cens = tf.eye(n_class)
-        inner_dist = tf.reduce_max(tf.reshape(tf.boolean_mask(dist_to_cens, d == 1), (n_class, self.n_shots)), -1)
-        extra_dist = tf.reduce_min(tf.reshape(tf.boolean_mask(dist_to_cens, d == 0), (n_class, (n_class - 1) * self.n_shots)), axis=-1)
-        inter_dist =  tf.reduce_min(tf.reshape(tf.boolean_mask(cens_to_cens, d_cens == 0), (n_class, (n_class - 1))), axis=-1)
+        centroids = tf.reduce_mean(res_support, 1)
 
 
+        # dist_to_cens = l2_dis(tf.expand_dims(query, 1), centroids, False)
+        # l_pos = tf.reshape(tf.boolean_mask(dist_to_cens, labels_mask == 1), (N, -1))
+        # l_neg = tf.reduce_min(tf.reshape(tf.boolean_mask(dist_to_cens, labels_mask == 0), (N, (n_class - 1))), axis=-1)
+        # if self.soft:
+        #     triplet_loss = tf.math.log1p(tf.math.exp(l_pos - l_neg)) / tf.reduce_mean(l_neg)
+        #
+        # else:
+        #
+        #     # 3
+        #     triplet_loss = tf.maximum(0., self.beta + l_pos - l_neg) / tf.reduce_mean(l_neg)
 
-        if self.soft:
-            neg_cluster = 0.5 * (inter_dist + extra_dist)
-            triplet_loss = tf.math.log1p(tf.math.exp(inner_dist- neg_cluster ))
+        dist_to_cens = l2_dis(tf.expand_dims(query, 1), centroids, False)
+        l_pos = tf.reduce_max(tf.reshape(tf.boolean_mask(dist_to_cens, labels_mask == 1), (n_class, n_query)), -1)
+        cens_to_cens =  l2_dis(tf.expand_dims(centroids, 1), centroids, False)
+        d_cen = tf.eye(n_class)
+        l_neg = tf.reduce_min(tf.reshape(tf.boolean_mask(cens_to_cens, d_cen == 0), (n_class, (n_class - 1))), axis=-1)
 
-        else:
-            triplet_loss = tf.maximum(0., self.margin + inner_dist - extra_dist)
+        triplet_loss = tf.math.maximum(0., self.beta - (l_neg / (l_pos + 1e-13)))
+
+
 
         return triplet_loss
 
@@ -297,10 +305,17 @@ if __name__ == '__main__':
 
     # b = tf.transpose(tf.Variable([[1., 2., 3., 4., 5., 6.]]))
 
-    n_class = 3
-    n_shots = 2
-    # a = tf.ones((n_shots * n_class, 1)) * b
-    a =  tf.random.normal((n_class * n_shots, 10))
-    a = tf.math.l2_normalize(a, -1)
-    loss = NucleusTriplet(n_shots=n_shots, mean=True, soft=True)
-    loss(a, n_class=n_class)
+    #support set
+    n_class = 5
+    n_shots = 3
+    support =  tf.random.normal((n_class * n_shots, 10))
+    support = tf.math.l2_normalize(support, -1)
+    #query =
+    n_query = 20
+    q = tf.random.normal((n_query * n_class, 10))
+    labels = tf.random.uniform(shape=(100, 1), minval=1, maxval=n_class, dtype=tf.int32)
+    loss = NucleusTriplet(mean=True, soft=True)
+    loss(q, labels, support, n_shots=n_shots, n_class=n_class, n_query=n_query)
+
+    # loss = CentroidTriplet(mean=True)
+    # loss(support, n_class=n_class, n_shots=n_shots)

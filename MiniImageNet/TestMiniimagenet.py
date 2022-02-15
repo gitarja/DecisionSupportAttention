@@ -15,12 +15,12 @@ import pandas as pd
 
 
 
-def knn_class(q_logits, labels, ref_logits, ref_labels, shots=5):
+def knn_class(q_logits, labels, ref_logits, ref_labels, shots=5, n_class=5):
     N, D = ref_logits.shape
     q_logits = q_logits.numpy()
     ref_logits = ref_logits.numpy()
-    ref_logits = tf.reduce_mean(tf.reshape(ref_logits, (len(labels), shots, D)), 1) # mean
-    acc = kNN(q_logits, labels, ref_logits, labels, ref_num=1, return_pred=False)
+    ref_logits = tf.reduce_mean(tf.reshape(ref_logits, (n_class, shots, D)), 1) # mean
+    acc = kNN(q_logits, labels, ref_logits, ref_labels, ref_num=1, return_pred=False)
     return acc
 
 
@@ -34,7 +34,7 @@ models_path = TENSOR_BOARD_PATH + ""
 random.seed(2021)
 
 test_list = pd.read_csv("test_list.csv")
-data_test = [test_dataset.get_batches(shots=shots, num_classes=num_classes) for i in range(600)]
+data_test = [test_dataset.get_batches(shots=shots, num_classes=num_classes, num_query=1) for i in range(600)]
 
 for index, row in test_list.iterrows():
     models = models_path + row["path"]
@@ -60,11 +60,11 @@ for index, row in test_list.iterrows():
             query, labels, references, ref_labels = data_test[i]
             q_logits = model(query, False)
             ref_logits = model(references, False)
-            acc = classify(q_logits, labels, ref_logits, shots)
-            classify(q_logits, labels, ref_logits, shots)
+            acc = knn_class(q_logits, labels, ref_logits, ref_labels, shots, n_class=num_classes)
+
             # if np.sum(acc) < num_classes:
             #     print("wrong")
-            acc_avg.append(acc)
+            acc_avg.append(np.average(acc))
         all_acc.append(np.average(acc_avg))
 
 

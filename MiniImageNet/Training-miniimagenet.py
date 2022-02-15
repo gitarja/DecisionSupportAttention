@@ -1,12 +1,13 @@
 import os.path
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+import tensorflow_addons as tfa
 import tensorflow as tf
 tf.keras.backend.set_floatx('float32')
 from MiniImageNet.DataGenerator import Dataset
 from NNModels.FewShotModel import FewShotModel
 from NNModels.RGBModel import RGBModel
-from Utils.CustomLoss import NucleusTriplet
+from Utils.CustomLoss import NucleusTriplet, CentroidTriplet, BarlowTwins
 import datetime
 from MiniImageNet.Conf import TENSOR_BOARD_PATH
 import argparse
@@ -24,17 +25,21 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--margin', type=float, default=0.5)
+    parser.add_argument('--beta', type=float, default=0.5)
     parser.add_argument('--soft', type=bool, default=False)
     parser.add_argument('--n_class', type=int, default=25)
     parser.add_argument('--z_dim', type=int, default=64)
     parser.add_argument('--mean', type=bool, default=False)
     parser.add_argument('--shots', type=int, default=5)
+    parser.add_argument('--query_train', type=int, default=1)
+    parser.add_argument('--epochs', type=int, default=50000)
 
 
     args = parser.parse_args()
 
     # set up GPUs
     gpus = tf.config.list_physical_devices('GPU')
+    n_gpus = len(gpus)
     if gpus:
         try:
             # Currently, memory growth needs to be the same across GPUs
@@ -46,7 +51,7 @@ if __name__ == '__main__':
             # Memory growth must be set before GPUs have been initialized
             print(e)
 
-    cross_tower_ops = tf.distribute.HierarchicalCopyAllReduce(num_packs=2)
+    cross_tower_ops = tf.distribute.HierarchicalCopyAllReduce(num_packs=n_gpus)
     strategy = tf.distribute.MirroredStrategy(cross_device_ops=cross_tower_ops)
 
     print(args.n_class)
@@ -57,21 +62,25 @@ if __name__ == '__main__':
 
     # training setting
     eval_interval = 15
+    train_query = args.query_train
     train_class = args.n_class
+    train_shots = args.shots
 
 
-    val_class = args.n_class
+    val_class = 5
+
+    val_shots = 5
     val_loss_th = 1e+3
     val_acc_th = 0.
-    shots = args.shots
+
 
     # training setting
-    epochs = 30000
+    epochs = args.epochs
     lr = 1e-3
 
 
     # early stopping
-    early_th = 100
+    early_th = 25
     early_idx = 0
 
     # siamese and discriminator hyperparameter values
@@ -87,7 +96,8 @@ if __name__ == '__main__':
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    triplet_loss = NucleusTriplet(margin=args.margin, soft=args.soft,  n_shots=shots, mean=args.mean)
+    triplet_loss = CentroidTriplet(beta=args.beta, margin=args.margin, soft=args.soft,  mean=args.mean)
+    # triplet_loss = NucleusTriplet(beta=args.beta, margin=args.margin, soft=args.soft, mean=args.mean)
 
     with strategy.scope():
         model = FewShotModel(z_dim=z_dim)
@@ -99,12 +109,15 @@ if __name__ == '__main__':
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             lr,
             decay_steps=2000,
-            decay_rate=0.8)
+            decay_rate=0.5)
+
         siamese_optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+        # siamese_optimizer = tfa.optimizers.RectifiedAdam(learning_rate=lr, min_lr=1e-6, total_steps=epochs, warmup_proportion=0.1)
 
         #metrics
         # train
         loss_train = tf.keras.metrics.Mean()
+        acc_train = tf.keras.metrics.Mean()
 
         # test
         loss_test = tf.keras.metrics.Mean()
@@ -113,33 +126,45 @@ if __name__ == '__main__':
 
 
     with strategy.scope():
-        def compute_triplet_loss(embd, n_class, global_batch_size):
-            per_example_loss = triplet_loss(embd, n_class)
-            return tf.nn.compute_average_loss(per_example_loss)
+        # def compute_triplet_loss(embd, n_class, global_batch_size):
+        #     per_example_loss = triplet_loss(embd, n_class)
+        #     return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
+
+        # def compute_triplet_loss(r_logits, n_class, n_shots, global_batch_size):
+        #     per_example_loss = triplet_loss(r_logits, n_class, n_shots)
+        #     return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
+
+        def compute_triplet_loss(q_logits, q_labels, r_logits, n_class, n_shots, n_query, global_batch_size):
+            # per_example_loss = triplet_loss(q_logits, q_labels, r_logits, n_class, n_shots, n_query)
+            per_example_loss = triplet_loss(r_logits, n_class, n_shots)
+            return tf.nn.compute_average_loss(per_example_loss, global_batch_size=global_batch_size)
 
     with strategy.scope():
 
 
         def train_step(inputs, GLOBAL_BATCH_SIZE=0):
-            X, y = inputs
+            query, labels, references, ref_labels = inputs
             with tf.GradientTape() as siamese_tape, tf.GradientTape():
-                embeddings = model(X, training=True)
-                embd_loss = compute_triplet_loss(embeddings, train_class, GLOBAL_BATCH_SIZE)  # triplet loss
+                q_logits = model(query, training=True)
+                ref_logits = model(references, training=True)
+                embd_loss = compute_triplet_loss(q_logits, labels, ref_logits, train_class, train_shots, train_query, train_class*train_query*n_gpus)  # triplet loss
                            # Use the gradient tape to automatically retrieve
             # the gradients of the trainable variables with respect to the loss.
+            acc = classify(q_logits, labels, ref_logits, train_class, train_shots, mean=args.mean)
             siamese_grads = siamese_tape.gradient(embd_loss, model.trainable_weights)
             siamese_optimizer.apply_gradients(zip(siamese_grads, model.trainable_weights))
             loss_train(embd_loss)
+            acc_train(acc)
             return embd_loss
 
 
         def val_step(inputs, GLOBAL_BATCH_SIZE=0):
             query, labels, references, ref_labels = inputs
+            q_logits = model(query, training=False)
             ref_logits = model(references, training=False)
-            q_logits =  model(query, training=False)
-            loss = compute_triplet_loss(ref_logits, val_class, GLOBAL_BATCH_SIZE)  # triplet loss
+            loss = compute_triplet_loss(q_logits, labels, ref_logits, val_class, val_shots, 1, val_class * val_shots * n_gpus)  # triplet loss
 
-            acc = classify(q_logits, labels, ref_logits,  shots)
+            acc = classify(q_logits, labels, ref_logits, val_class,  val_shots, mean=args.mean)
 
             loss_test(loss)
             acc_test(acc)
@@ -147,6 +172,7 @@ if __name__ == '__main__':
 
         def reset_metric():
             loss_train.reset_states()
+            acc_train.reset_states()
             loss_test.reset_states()
             acc_test.reset_states()
 
@@ -172,25 +198,19 @@ if __name__ == '__main__':
             if epoch == 2000:
                 siamese_optimizer.beta_1 = 0.5
             # dataset
-            train_inputs = train_dataset.get_mini_offline_batches(train_class,
-                                                                  shots=shots,
+            train_inputs = train_dataset.get_batches(train_shots, train_class, num_query=train_query)
 
 
-                                                                  )
-
-            model(train_inputs[0])
-            distributed_train_step(train_inputs, train_class * shots)
+            distributed_train_step(train_inputs, train_class)
 
             if (epoch + 1) % eval_interval == 0:
                 # validation dataset
                 for val_epoch in range(300):
-                    # val_inputs = val_dataset.get_mini_offline_batches(val_class,
-                    #                                                   shots=shots,
-                    #                                                   )
-                    val_inputs = val_dataset.get_batches(shots, train_class)
-                    distributed_test_step(val_inputs, val_class * shots)
+                    val_inputs = val_dataset.get_batches(val_shots, val_class)
+                    distributed_test_step(val_inputs, val_class)
                 with train_summary_writer.as_default():
                     tf.summary.scalar('loss', loss_train.result().numpy(), step=epoch)
+                    tf.summary.scalar('acc', acc_train.result().numpy(), step=epoch)
                 with test_summary_writer.as_default():
                     tf.summary.scalar('loss', loss_test.result().numpy(), step=epoch)
                     tf.summary.scalar('acc', acc_test.result().numpy(), step=epoch)
@@ -201,12 +221,14 @@ if __name__ == '__main__':
                 val_loss = loss_test.result().numpy()
                 val_acc = acc_test.result().numpy()
 
-                if val_loss_th >= val_loss or val_acc_th <= val_acc:
-                    val_loss_th = val_loss
+                if val_acc_th <= val_acc:
                     val_acc_th = val_acc
                     manager.save()
-                    early_idx = 0
 
+
+                if val_loss <= val_loss_th:
+                    val_loss_th = val_loss
+                    early_idx = 0
                 else:
                     early_idx += 1
                 reset_metric()

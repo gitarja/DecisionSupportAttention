@@ -1,2 +1,6 @@
-/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/MiniImageNet/Training-miniimagenet.py --n_class=5 --soft=True --mean=True --shots=5
-/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/MiniImageNet/Training-miniimagenet.py --n_class=20 --soft=True --mean=True --shots=5
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/MiniImageNet/Training-miniimagenet.py --n_class=10 --beta=2. --margin=0.15 --mean=True --shots=5 --query_train=10
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/MiniImageNet/Training-miniimagenet.py --n_class=10 --beta=2.5 --margin=0.15 --mean=True --shots=5 --query_train=10
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/MiniImageNet/Training-miniimagenet.py --n_class=10 --beta=3. --margin=0.15 --mean=True --shots=5 --query_train=10
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/MiniImageNet/Training-miniimagenet.py --n_class=10 --beta=2. --margin=0.15 --mean=True --shots=10 --query_train=10
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/MiniImageNet/Training-miniimagenet.py --n_class=10 --beta=2.5 --margin=0.15 --mean=True --shots=10 --query_train=10
+/home/user/.conda/envs/pras_tensorflow/bin/python3.7 /mnt/data1/users/pras/projects/DecisionSupportAttention/MiniImageNet/Training-miniimagenet.py --n_class=10 --beta=3. --margin=0.15 --mean=True --shots=10 --query_train=10
