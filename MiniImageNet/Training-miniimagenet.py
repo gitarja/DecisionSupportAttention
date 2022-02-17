@@ -96,7 +96,7 @@ if __name__ == '__main__':
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    triplet_loss = CentroidTriplet(beta=args.beta, margin=args.margin, soft=args.soft,  mean=args.mean)
+    triplet_loss = CentroidTriplet( margin=args.margin, soft=args.soft,  mean=args.mean)
     # triplet_loss = NucleusTriplet(beta=args.beta, margin=args.margin, soft=args.soft, mean=args.mean)
 
     with strategy.scope():

@@ -84,7 +84,7 @@ if __name__ == '__main__':
     test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     # loss
-    cluster_loss = NucleusTriplet(margin=args.margin, soft=args.soft,  n_shots=shots, mean=args.mean)
+    cluster_loss = NucleusTriplet(margin=args.margin, soft=args.soft,   mean=args.mean)
     triplet_loss = TripletHardLoss(margin=args.margin, soft=args.soft)
 
     with strategy.scope():

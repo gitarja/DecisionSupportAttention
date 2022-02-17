@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow_addons as tfa
 import math
 import shap
-from Utils.CustomLoss import CentroidTriplet
+from Utils.CustomLoss import CentroidTriplet, NucleusTriplet
 import datetime
 #make TF reproducible
 seed = 2021
@@ -19,20 +19,20 @@ shots = 10
 
 #setting
 epochs = 50
-eval_interval = 1
+eval_interval = 3
 val_loss_th = 1e+3
-margin = 0.35
+margin = 1.4
 early_th = 10
 lr = 1e-5
 #prepare model and loss
 model = AttentionModel(filters=32, z_dim=32)
 lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
     lr,
-    decay_steps=30,
+    decay_steps=20,
     decay_rate=0.8,
     staircase=True)
 optimizer = tf.optimizers.Adam(learning_rate=lr)
-loss = CentroidTriplet(margin=margin, n_shots=shots, soft=False)
+loss = CentroidTriplet(margin=margin, soft=False, mean=True)
 
 #checkpoint
 checkpoint_path = TENSOR_BOARD_PATH + "centroid" + "/model"
@@ -46,14 +46,14 @@ for epoch in range(epochs):
     anchor, labels = generator_train.get_mini_offline_batches(x, y, n_class=train_class, shots=shots)
     with tf.GradientTape() as siamese_tape, tf.GradientTape():
         logit = model(anchor, training=True)
-        loss_train = tf.reduce_mean(loss(logit, n_class=train_class))
+        loss_train = tf.reduce_mean(loss(logit, n_class=train_class, n_shots=shots))
 
     siamese_grads = siamese_tape.gradient(loss_train, model.trainable_weights)
     optimizer.apply_gradients(zip(siamese_grads, model.trainable_weights))
 
     if epoch % eval_interval == 0:
         logit_val = model(anchor_val, training=False)
-        loss_test = tf.reduce_mean(loss(logit_val, n_class=train_class))
+        loss_test = tf.reduce_mean(loss(logit_val, n_class=train_class, n_shots=shots))
 
         print("Training loss=%f, validation loss=%f" % (
             np.mean(loss_train.numpy()),  np.mean(loss_test.numpy())))  # print train and val losses

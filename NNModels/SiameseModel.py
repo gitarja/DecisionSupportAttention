@@ -40,7 +40,7 @@ class BaseLine(K.models.Model):
 class ProjectBlock(K.layers.Layer):
     def __init__(self, filters):
         super(ProjectBlock, self).__init__()
-        self.dense = K.layers.Dense(filters,  activation=None, use_bias=False)
+        self.dense = K.layers.Dense(filters,  activation=None, use_bias=True)
         self.batch = K.layers.BatchNormalization()
         self.relu = K.layers.ELU()
 

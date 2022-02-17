@@ -1,7 +1,7 @@
 import glob
 import pandas as pd
 import numpy as np
-from AttentionTest.Conf import DATASET_PATH
+from AttentionTest.Conf import DATASET_PATH, N_FEATURES
 import random
 import pickle
 from sklearn.model_selection import  train_test_split
@@ -52,7 +52,7 @@ class Dataset:
     def get_mini_offline_batches(self, X_train, y_train, n_class=2, shots=2):
 
 
-        anchors = np.zeros(shape=(n_class * shots, 17))
+        anchors = np.zeros(shape=(n_class * shots, N_FEATURES))
         labels = np.zeros(shape=(n_class * shots, 1))
         for i in range(n_class):
             if shots > len(X_train[y_train==i].tolist()):
@@ -69,14 +69,36 @@ class Dataset:
         return anchors.astype(np.float32), labels.astype(np.float32)
 
 
+    def get_batches(self, X_train, y_train, shots, n_class, n_query=1): #get data for training
+        anchor_data = np.zeros(shape=(n_class * n_query, N_FEATURES))
+        anchor_labels = np.zeros(shape=(n_class * n_query))
+
+        support_data = np.zeros(shape=(n_class * shots, N_FEATURES))
+        support_labels = np.zeros(shape=(n_class * shots))
+
+        for i in range(n_class):
+            if shots > len(X_train[y_train == i].tolist()):
+                positive_to_split = random.choices(
+                    X_train[y_train == i].tolist(), k=shots + n_query)
+            else:
+                positive_to_split = random.sample(
+                    X_train[y_train == i].tolist(), k=shots + n_query)
+                # set anchor and pair positives
+            anchor_data[i * n_query:(i + 1) * n_query] = positive_to_split[:n_query]
+            anchor_labels[i * n_query:(i + 1) * n_query] = i
+            support_data[i * shots:(i + 1) * shots] = positive_to_split[n_query:]
+            support_labels[i * shots:(i + 1) * shots] = i
+
+        return (anchor_data, anchor_labels), (support_data, support_labels)
+
 if __name__ == '__main__':
     test_dataset = Dataset(mode="train_val")
     X_train, y_train, X_test, y_test = test_dataset.fetch_all(validation=True)
 
-    anchors, labels = test_dataset.get_mini_offline_batches(X_train, y_train, n_class=2, shots=3)
+    anchors, supports = test_dataset.get_batches(X_train, y_train, n_class=2, shots=3, n_query=1)
 
-    print(anchors.shape)
-    print(labels.shape)
+    print(anchors[0].shape)
+    print(supports[0].shape)
 
 
 

@@ -79,9 +79,8 @@ class CentroidTripletSketch():
 
 class CentroidTriplet():
 
-    def __init__(self, beta=0.5, margin=0.5, soft=False, mean=False):
+    def __init__(self,  margin=0.5, soft=False, mean=False):
         super(CentroidTriplet, self).__init__()
-        self.beta = beta
         self.margin = margin
         self.soft = soft
         self.mean = mean
@@ -94,17 +93,13 @@ class CentroidTriplet():
 
         res_embed = tf.reshape(embed, (n_class, n_shots, D))
 
-        if self.mean:
-            centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
-            dist_to_cens = tf.reshape(l2_dis(tf.expand_dims(res_embed, 1), centroids),
-                                                  (n_class, n_class * n_shots))
-            cens_to_cens = tf.reshape(l2_dis(tf.expand_dims(centroids, 1), centroids),
-                                                  (n_class, n_class))
-        else:
-            centroids = tfp.stats.percentile(res_embed, 50.0, 1, keepdims=True)
 
-            dist_to_cens = tf.reshape(l1_dis(tf.expand_dims(res_embed, 1), centroids),
+        centroids = tf.reduce_mean(res_embed, 1, keepdims=True)
+        dist_to_cens = tf.reshape(l2_dis(tf.expand_dims(res_embed, 1), centroids),
                                                   (n_class, n_class * n_shots))
+        cens_to_cens = tf.reshape(l2_dis(tf.expand_dims(centroids, 1), centroids),
+                                                  (n_class, n_class))
+
 
         d = tf.reshape(tf.repeat(tf.eye(n_class), n_shots), (n_class, n_class * n_shots))
         d_cen = tf.eye(n_class)
@@ -115,17 +110,16 @@ class CentroidTriplet():
             triplet_loss = tf.math.log1p(tf.math.exp(-l_neg / (l_pos + 1e-13)))
         else:
 
-            triplet_loss = tf.math.maximum(0., self.beta - (l_neg / (l_pos + 1e-13)))
+            triplet_loss = tf.math.maximum(0., self.margin - (l_neg / (l_pos + 1e-13)))
 
         return triplet_loss
 
 
 class NucleusTriplet():
 
-    def __init__(self, beta=0.5, margin=0.5, soft=False, mean=True):
+    def __init__(self, margin=0.5, soft=False, mean=True):
         super(NucleusTriplet, self).__init__()
         self.margin = margin
-        self.beta = beta
         self.soft = soft
         self.mean = mean
 
@@ -165,7 +159,7 @@ class NucleusTriplet():
         d_cen = tf.eye(n_class)
         l_neg = tf.reduce_min(tf.reshape(tf.boolean_mask(cens_to_cens, d_cen == 0), (n_class, (n_class - 1))), axis=-1)
 
-        triplet_loss = tf.math.maximum(0., self.beta - (l_neg / (l_pos + 1e-13)))
+        triplet_loss = tf.math.maximum(0., self.margin - (l_neg / (l_pos + 1e-13)))
 
 
 
